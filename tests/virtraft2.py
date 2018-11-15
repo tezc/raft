@@ -659,16 +659,18 @@ class RaftServer(object):
         cbs.applylog = self.raft_applylog
         cbs.persist_vote = self.raft_persist_vote
         cbs.persist_term = self.raft_persist_term
-        cbs.log_offer = self.raft_logentry_offer
-        cbs.log_poll = self.raft_logentry_poll
-        cbs.log_pop = self.raft_logentry_pop
         cbs.log_get_node_id = self.raft_logentry_get_node_id
         cbs.node_has_sufficient_logs = self.raft_node_has_sufficient_logs
         cbs.notify_membership_event = self.raft_notify_membership_event
         cbs.log = self.raft_log
 
-        lib.raft_set_callbacks(self.raft, cbs, self.udata)
+        log_cbs = ffi.new('log_cbs_t*')
+        log_cbs.log_offer = self.raft_logentry_offer
+        log_cbs.log_poll = self.raft_logentry_poll
+        log_cbs.log_pop = self.raft_logentry_pop
 
+        lib.raft_set_callbacks(self.raft, cbs, self.udata)
+        lib.log_set_callbacks(lib.raft_get_log(self.raft), log_cbs, self.raft)
         lib.raft_set_election_timeout(self.raft, 500)
 
         self.fsm_dict = {}
