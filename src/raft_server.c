@@ -66,7 +66,7 @@ void raft_randomize_election_timeout(raft_server_t* me_)
     __log(me_, NULL, "randomize election timeout to %d", me->election_timeout_rand);
 }
 
-raft_server_t* raft_new(void)
+raft_server_t* raft_new_ex(raft_log_impl_t *log_impl, void *log)
 {
     raft_server_private_t* me =
         (raft_server_private_t*)__raft_calloc(1, sizeof(raft_server_private_t));
@@ -78,11 +78,8 @@ raft_server_t* raft_new(void)
     me->request_timeout = 200;
     me->election_timeout = 1000;
     raft_randomize_election_timeout((raft_server_t*)me);
-    me->log = log_new();
-    if (!me->log) {
-        __raft_free(me);
-        return NULL;
-    }
+    me->log_impl = log_impl;
+    me->log = log;
     me->voting_cfg_change_log_idx = -1;
     raft_set_state((raft_server_t*)me, RAFT_STATE_FOLLOWER);
     me->current_leader = NULL;
@@ -93,20 +90,27 @@ raft_server_t* raft_new(void)
     return (raft_server_t*)me;
 }
 
+extern raft_log_impl_t log_internal_impl;
+
+raft_server_t* raft_new(void)
+{
+    void *log = log_new();
+    return raft_new_ex(&log_internal_impl, log);
+}
+
 void raft_set_callbacks(raft_server_t* me_, raft_cbs_t* funcs, void* udata)
 {
     raft_server_private_t* me = (raft_server_private_t*)me_;
 
     memcpy(&me->cb, funcs, sizeof(raft_cbs_t));
     me->udata = udata;
-    log_set_callbacks(me->log, &me->cb, me_);
 }
 
 void raft_free(raft_server_t* me_)
 {
     raft_server_private_t* me = (raft_server_private_t*)me_;
 
-    log_free(me->log);
+    me->log_impl->free(me->log);
     __raft_free(me_);
 }
 
@@ -125,8 +129,7 @@ void raft_clear(raft_server_t* me_)
     me->last_applied_idx = 0;
     me->num_nodes = 0;
     me->node = NULL;
-    log_clear_entries(me->log);
-    log_clear(me->log);
+    me->log_impl->reset(me->log, 1);
 }
 
 int raft_delete_entry_from_idx(raft_server_t* me_, raft_index_t idx)
@@ -138,7 +141,7 @@ int raft_delete_entry_from_idx(raft_server_t* me_, raft_index_t idx)
     if (idx <= me->voting_cfg_change_log_idx)
         me->voting_cfg_change_log_idx = -1;
 
-    return log_delete(me->log, idx);
+    return me->log_impl->del(me->log, idx, me->log_impl->current_idx(me->log));
 }
 
 int raft_election_start(raft_server_t* me_)
@@ -262,7 +265,7 @@ int raft_periodic(raft_server_t* me_, int msec_since_last_period)
 raft_entry_t* raft_get_entry_from_idx(raft_server_t* me_, raft_index_t etyidx)
 {
     raft_server_private_t* me = (raft_server_private_t*)me_;
-    return log_get_at_idx(me->log, etyidx);
+    return me->log_impl->get(me->log, etyidx);
 }
 
 int raft_voting_change_is_in_progress(raft_server_t* me_)
@@ -800,10 +803,18 @@ int raft_append_entry(raft_server_t* me_, raft_entry_t* ety)
 {
     raft_server_private_t* me = (raft_server_private_t*)me_;
 
-    if (raft_entry_is_voting_cfg_change(ety))
-        me->voting_cfg_change_log_idx = raft_get_current_idx(me_);
+    int e = me->log_impl->append(me->log, ety);
+    if (e < 0) 
+        return e;
 
-    return log_append_entry(me->log, ety);
+    if (raft_entry_is_voting_cfg_change(ety))
+        me->voting_cfg_change_log_idx = raft_get_current_idx(me_) - 1;
+
+    if (raft_entry_is_cfg_change(ety)) {
+        raft_handle_cfg_change(me_, ety, raft_get_current_idx(me_));
+    }
+
+    return 0;
 }
 
 int raft_apply_entry(raft_server_t* me_)
@@ -877,7 +888,7 @@ int raft_apply_entry(raft_server_t* me_)
 raft_entry_t* raft_get_entries_from_idx(raft_server_t* me_, raft_index_t idx, int* n_etys)
 {
     raft_server_private_t* me = (raft_server_private_t*)me_;
-    return log_get_from_idx(me->log, idx, n_etys);
+    return me->log_impl->get_from(me->log, idx, n_etys);
 }
 
 int raft_send_appendentries(raft_server_t* me_, raft_node_t* node)
@@ -1127,11 +1138,14 @@ int raft_entry_is_cfg_change(raft_entry_t* ety)
         RAFT_LOGTYPE_REMOVE_NODE == ety->type);
 }
 
-void raft_offer_log(raft_server_t* me_, raft_entry_t* ety, const raft_index_t idx)
+void raft_handle_cfg_change(raft_server_t* me_, raft_entry_t* ety, const raft_index_t idx)
 {
     raft_server_private_t* me = (raft_server_private_t*)me_;
 
     if (!raft_entry_is_cfg_change(ety))
+        return;
+
+    if (!me->cb.log_get_node_id)
         return;
 
     raft_node_id_t node_id = me->cb.log_get_node_id(me_, raft_get_udata(me_), ety, idx);
@@ -1224,14 +1238,16 @@ void raft_pop_log(raft_server_t* me_, raft_entry_t* ety, const raft_index_t idx)
     }
 }
 
-int raft_poll_entry(raft_server_t* me_, raft_entry_t **ety)
+int raft_poll_entry(raft_server_t* me_)
 {
     raft_server_private_t* me = (raft_server_private_t*)me_;
 
-    int e = log_poll(me->log, (void*)ety);
+    /* We should never drop uncommitted entries */
+    assert(me->log_impl->first_idx(me->log) <= raft_get_commit_idx(me_));
+
+    int e = me->log_impl->poll(me->log, me->log_impl->first_idx(me->log));
     if (e != 0)
         return e;
-    assert(*ety != NULL);
 
     return 0;
 }
@@ -1240,7 +1256,9 @@ int raft_pop_entry(raft_server_t* me_)
 {
     raft_server_private_t* me = (raft_server_private_t*)me_;
 
-    return log_delete(me->log, log_get_current_idx(me->log));
+    raft_index_t cur_idx = me->log_impl->current_idx(me->log);
+
+    return me->log_impl->del(me->log, cur_idx, cur_idx);
 }
 
 raft_index_t raft_get_first_entry_idx(raft_server_t* me_)
@@ -1260,7 +1278,7 @@ raft_index_t raft_get_num_snapshottable_logs(raft_server_t *me_)
     raft_server_private_t* me = (raft_server_private_t*)me_;
     if (raft_get_log_count(me_) <= 1)
         return 0;
-    return raft_get_commit_idx(me_) - log_get_base(me->log);
+    return raft_get_commit_idx(me_) - me->log_impl->first_idx(me->log) + 1;
 }
 
 int raft_begin_snapshot(raft_server_t *me_, int flags)
@@ -1320,29 +1338,26 @@ int raft_end_snapshot(raft_server_t *me_)
     if (!me->snapshot_in_progress || me->snapshot_last_idx == 0)
         return -1;
 
-    assert(raft_get_num_snapshottable_logs(me_) != 0);
+    // Why???
+    // assert(raft_get_num_snapshottable_logs(me_) != 0);
 
     /* If needed, remove compacted logs */
-    raft_index_t i = log_get_base(me->log) + 1, end = me->snapshot_last_idx;
-    for (; i <= end; i++)
-    {
-        raft_entry_t* _ety;
-        int e = raft_poll_entry(me_, &_ety);
-        if (e != 0)
-            return -1;
-    }
+    int e = me->log_impl->poll(me->log, me->snapshot_last_idx + 1);
+    if (e != 0)
+        return -1;
 
     me->snapshot_in_progress = 0;
 
     __log(me_, NULL,
         "end snapshot base:%d commit-index:%d current-index:%d\n",
-        log_get_base(me->log),
+        me->log_impl->first_idx(me->log) - 1,
         raft_get_commit_idx(me_),
         raft_get_current_idx(me_));
 
     if (!raft_is_leader(me_))
         return 0;
 
+    int i;
     for (i = 0; i < me->num_nodes; i++)
     {
         raft_node_t* node = me->nodes[i];
@@ -1392,7 +1407,7 @@ int raft_begin_load_snapshot(
     raft_set_state((raft_server_t*)me, RAFT_STATE_FOLLOWER);
     me->current_leader = NULL;
 
-    log_load_from_snapshot(me->log, last_included_index, last_included_term);
+    me->log_impl->reset(me->log, last_included_index + 1);
 
     if (raft_get_commit_idx(me_) < last_included_index)
         raft_set_commit_idx(me_, last_included_index);
@@ -1441,4 +1456,10 @@ int raft_end_load_snapshot(raft_server_t *me_)
     }
 
     return 0;
+}
+
+void *raft_get_log(raft_server_t *me_)
+{
+    raft_server_private_t* me = (raft_server_private_t*)me_;
+    return me->log;
 }

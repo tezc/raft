@@ -392,30 +392,6 @@ typedef struct
      * disk atomically. */
     func_persist_term_f persist_term;
 
-    /** Callback for adding an entry to the log
-     * For safety reasons this callback MUST flush the change to disk.
-     * Return 0 on success.
-     * Return RAFT_ERR_SHUTDOWN if you want the server to shutdown. */
-    func_logentry_event_f log_offer;
-
-    /** Callback for removing the oldest entry from the log
-     * For safety reasons this callback MUST flush the change to disk.
-     * @note If memory was malloc'd in log_offer then this should be the right
-     *  time to free the memory. */
-    func_logentry_event_f log_poll;
-
-    /** Callback for removing the youngest entry from the log
-     * For safety reasons this callback MUST flush the change to disk.
-     * @note If memory was malloc'd in log_offer then this should be the right
-     *  time to free the memory. */
-    func_logentry_event_f log_pop;
-
-    /** Callback called for every existing log entry when clearing the log.
-     * If memory was malloc'd in log_offer and the entry doesn't get a chance
-     * to go through log_poll or log_pop, this is the last chance to free it.
-     */
-    func_logentry_event_f log_clear;
-
     /** Callback for determining which node this configuration log entry
      * affects. This call only applies to configuration change log entries.
      * @return the node ID of the node */
@@ -430,6 +406,20 @@ typedef struct
      * This callback is optional */
     func_log_f log;
 } raft_cbs_t;
+
+typedef struct raft_log_impl
+{
+    void (*reset)               (void *log, raft_index_t first_idx);
+    void (*free)                (void *log);
+    int (*append)               (void *log, raft_entry_t *entry);
+    int (*poll)                 (void *log, raft_index_t first_idx);
+    int (*del)                  (void *log, raft_index_t from_idx, raft_index_t to_idx);
+    raft_entry_t* (*get)        (void *log, raft_index_t idx);
+    raft_entry_t* (*get_from)   (void *log, raft_index_t idx, int *entries_n);
+    raft_index_t (*first_idx)   (void *log);
+    raft_index_t (*current_idx) (void *log);
+    raft_index_t (*count)       (void *log);
+} raft_log_impl_t;
 
 typedef struct
 {
@@ -446,7 +436,9 @@ typedef struct
  * Election timeout defaults to 1000 milliseconds
  *
  * @return newly initialised Raft server */
-raft_server_t* raft_new(void);
+raft_server_t* raft_new();
+
+raft_server_t* raft_new_ex(raft_log_impl_t *log_impl, void *log);
 
 /** De-initialise Raft server.
  * Frees all memory */
@@ -873,7 +865,7 @@ int raft_is_apply_allowed(raft_server_t* me_);
  * This should be used for compacting logs.
  * @return 0 on success
  **/
-int raft_poll_entry(raft_server_t* me_, raft_entry_t **ety);
+int raft_poll_entry(raft_server_t* me_);
 
 /** Get last applied entry
  **/
@@ -963,5 +955,7 @@ void raft_node_set_addition_committed(raft_node_t* me_, int committed);
  * @param[in] raft The Raft server
  * @return 1 if a voting change is in progress */
 int raft_voting_change_is_in_progress(raft_server_t* me_);
+
+void *raft_get_log(raft_server_t* me_);
 
 #endif /* RAFT_H_ */

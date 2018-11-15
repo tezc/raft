@@ -5,11 +5,47 @@
 
 typedef void* log_t;
 
+typedef int (
+*func_log_logentry_event_f
+)   (
+    raft_server_t *raft,
+    void *user_data,
+    raft_entry_t *entry,
+    raft_index_t entry_idx
+    );
+
+typedef struct {
+    /** Callback for adding an entry to the log
+     * For safety reasons this callback MUST flush the change to disk.
+     * Return 0 on success.
+     * Return RAFT_ERR_SHUTDOWN if you want the server to shutdown. */
+
+    func_log_logentry_event_f log_offer;
+
+    /** Callback for removing the oldest entry from the log
+     * For safety reasons this callback MUST flush the change to disk.
+     * @note If memory was malloc'd in log_offer then this should be the right
+     *  time to free the memory. */
+    func_log_logentry_event_f log_poll;
+
+    /** Callback for removing the youngest entry from the log
+     * For safety reasons this callback MUST flush the change to disk.
+     * @note If memory was malloc'd in log_offer then this should be the right
+     *  time to free the memory. */
+    func_log_logentry_event_f log_pop;
+
+    /** Callback called for every existing log entry when clearing the log.
+     * If memory was malloc'd in log_offer and the entry doesn't get a chance
+     * to go through log_poll or log_pop, this is the last chance to free it.
+     */
+    func_log_logentry_event_f log_clear;
+} log_cbs_t;
+
 log_t* log_new(void);
 
 log_t* log_alloc(raft_index_t initial_size);
 
-void log_set_callbacks(log_t* me_, raft_cbs_t* funcs, void* raft);
+void log_set_callbacks(log_t* me_, log_cbs_t* funcs, void* raft);
 
 void log_free(log_t* me_);
 

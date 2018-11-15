@@ -318,14 +318,17 @@ static int __raft_logentry_offer(
 void TestRaft_server_append_entry_user_can_set_data_buf(CuTest * tc)
 {
     raft_cbs_t funcs = {
-        .log_offer = __raft_logentry_offer,
-        .persist_term = __raft_persist_term,
+        .persist_term = __raft_persist_term
+    };
+    log_cbs_t log_funcs = {
+        .log_offer = __raft_logentry_offer
     };
     char *buf = "aaa";
 
     void *r = raft_new();
     raft_set_state(r, RAFT_STATE_CANDIDATE);
     raft_set_callbacks(r, &funcs, tc);
+    log_set_callbacks(raft_get_log(r), &log_funcs, r);
     raft_set_current_term(r, 5);
     raft_entry_t ety = {};
     ety.term = 1;
@@ -1605,7 +1608,9 @@ void TestRaft_follower_recv_appendentries_partial_failures(
     CuTest * tc)
 {
     raft_cbs_t funcs = {
-        .persist_term = __raft_persist_term,
+        .persist_term = __raft_persist_term
+    };
+    log_cbs_t log_funcs = {
         .log_offer = __raft_log_offer_error,
         .log_pop = __raft_log_pop_error
     };
@@ -1613,6 +1618,7 @@ void TestRaft_follower_recv_appendentries_partial_failures(
     void *r = raft_new();
     __raft_error_t error = {};
     raft_set_callbacks(r, &funcs, &error);
+    log_set_callbacks(raft_get_log(r), &log_funcs, r);
 
     raft_add_node(r, NULL, 1, 1);
     raft_add_node(r, NULL, 2, 0);
@@ -3932,7 +3938,9 @@ void TestRaft_leader_recv_appendentries_response_set_has_sufficient_logs_after_v
         .applylog = __raft_applylog,
         .persist_term = __raft_persist_term,
         .node_has_sufficient_logs = __raft_node_has_sufficient_logs,
-        .log_get_node_id = __raft_log_get_node_id,
+        .log_get_node_id = __raft_log_get_node_id
+    };
+    log_cbs_t log_funcs = {
         .log_offer = __raft_log_offer
     };
 
@@ -3941,6 +3949,7 @@ void TestRaft_leader_recv_appendentries_response_set_has_sufficient_logs_after_v
 
     int has_sufficient_logs_flag = 0;
     raft_set_callbacks(r, &funcs, &has_sufficient_logs_flag);
+    log_set_callbacks(raft_get_log(r), &log_funcs, r);
 
     /* I'm the leader */
     raft_set_state(r, RAFT_STATE_LEADER);

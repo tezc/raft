@@ -249,10 +249,9 @@ void TestRaft_leader_snapshot_end_succeeds_if_log_compacted(CuTest * tc)
 
     CuAssertIntEquals(tc, 0, raft_begin_snapshot(r, 0));
 
-    raft_entry_t* _ety;
     int i = raft_get_first_entry_idx(r);
     for (; i < raft_get_commit_idx(r); i++)
-        CuAssertIntEquals(tc, 0, raft_poll_entry(r, &_ety));
+        CuAssertIntEquals(tc, 0, raft_poll_entry(r));
 
     CuAssertIntEquals(tc, 0, raft_begin_snapshot(r, 0));
     CuAssertIntEquals(tc, 0, raft_end_snapshot(r));
@@ -301,10 +300,9 @@ void TestRaft_leader_snapshot_end_succeeds_if_log_compacted2(CuTest * tc)
 
     CuAssertIntEquals(tc, 0, raft_begin_snapshot(r, 0));
 
-    raft_entry_t* _ety;
     int i = raft_get_first_entry_idx(r);
     for (; i <= raft_get_commit_idx(r); i++)
-        CuAssertIntEquals(tc, 0, raft_poll_entry(r, &_ety));
+        CuAssertIntEquals(tc, 0, raft_poll_entry(r));
 
     CuAssertIntEquals(tc, 0, raft_end_snapshot(r));
     CuAssertIntEquals(tc, 0, raft_get_num_snapshottable_logs(r));

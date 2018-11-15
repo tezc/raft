@@ -36,7 +36,8 @@ typedef struct
     raft_entry_t* entries;
 
     /* callbacks */
-    raft_cbs_t *cb;
+    log_cbs_t cb;
+
     void* raft;
 } log_private_t;
 
@@ -106,12 +107,12 @@ log_t* log_new(void)
     return log_alloc(INITIAL_CAPACITY);
 }
 
-void log_set_callbacks(log_t* me_, raft_cbs_t* funcs, void* raft)
+void log_set_callbacks(log_t* me_, log_cbs_t* funcs, void* raft)
 {
     log_private_t* me = (log_private_t*)me_;
 
     me->raft = raft;
-    me->cb = funcs;
+    me->cb = *funcs;
 }
 
 void log_clear(log_t* me_)
@@ -128,12 +129,12 @@ void log_clear_entries(log_t* me_)
     log_private_t* me = (log_private_t*)me_;
     raft_index_t i;
 
-    if (!me->count || !me->cb || !me->cb->log_clear)
+    if (!me->count || !me->cb.log_clear)
         return;
 
     for (i = me->base; i <= me->base + me->count; i++)
     {
-        me->cb->log_clear(me->raft, raft_get_udata(me->raft),
+        me->cb.log_clear(me->raft, raft_get_udata(me->raft),
                           &me->entries[(me->front + i - me->base) % me->size], i);
     }
 }
@@ -151,13 +152,12 @@ int log_append_entry(log_t* me_, raft_entry_t* ety)
 
     memcpy(&me->entries[me->back], ety, sizeof(raft_entry_t));
 
-    if (me->cb && me->cb->log_offer)
+    if (me->cb.log_offer)
     {
         void* ud = raft_get_udata(me->raft);
-        e = me->cb->log_offer(me->raft, ud, &me->entries[me->back], idx);
+        e = me->cb.log_offer(me->raft, ud, &me->entries[me->back], idx);
         if (0 != e)
             return e;
-        raft_offer_log(me->raft, &me->entries[me->back], idx);
     }
 
     me->count++;
@@ -234,13 +234,14 @@ int log_delete(log_t* me_, raft_index_t idx)
         raft_index_t idx_tmp = me->base + me->count;
         raft_index_t back = mod(me->back - 1, me->size);
 
-        if (me->cb && me->cb->log_pop)
+        if (me->cb.log_pop)
         {
-            int e = me->cb->log_pop(me->raft, raft_get_udata(me->raft),
-                                    &me->entries[back], idx_tmp);
+            int e = me->cb.log_pop(me->raft, raft_get_udata(me->raft),
+                                   &me->entries[back], idx_tmp);
             if (0 != e)
                 return e;
         }
+        /* Remove this */
         raft_pop_log(me->raft, &me->entries[back], idx_tmp);
         me->back = back;
         me->count--;
@@ -257,9 +258,9 @@ int log_poll(log_t * me_, void** etyp)
         return -1;
 
     const void *elem = &me->entries[me->front];
-    if (me->cb && me->cb->log_poll)
+    if (me->cb.log_poll)
     {
-        int e = me->cb->log_poll(me->raft, raft_get_udata(me->raft),
+        int e = me->cb.log_poll(me->raft, raft_get_udata(me->raft),
                                  &me->entries[me->front], idx);
         if (0 != e)
             return e;
@@ -313,3 +314,83 @@ raft_index_t log_get_base(log_t* me_)
 {
     return ((log_private_t*)me_)->base;
 }
+
+/* -------------------------------------------------------- */
+
+static void __log_free(void *log)
+{
+    log_free(log);
+}
+
+static void __log_reset(void *log, raft_index_t first_idx)
+{
+    log_clear_entries(log);
+    log_clear(log);
+
+    assert(first_idx >= 1);
+    ((log_private_t*) log)->base = first_idx - 1;
+}
+
+static int __log_append(void *log, raft_entry_t *entry)
+{
+    return log_append_entry(log, entry);
+}
+
+static raft_entry_t *__log_get(void *log, raft_index_t idx)
+{
+    return log_get_at_idx(log, idx);
+}
+
+static raft_entry_t *__log_get_from(void *log, raft_index_t idx, int *entries_n)
+{
+    return log_get_from_idx(log, idx, entries_n);
+}
+
+static int __log_del(void *log, raft_index_t from_idx, raft_index_t to_idx)
+{
+    /* TODO: Get rid of the following logic; it is here just to postpone
+     * changing the poll/pop convention.
+     */
+    return log_delete(log, from_idx);
+}
+
+static int __log_poll(void *log, raft_index_t first_idx)
+{
+    while (log_get_base(log) + 1 < first_idx) {
+        raft_entry_t *ety;
+        int e = log_poll(log, (void **) &ety);
+
+        if (e < 0)
+            return e;
+    }
+
+    return 0;
+}
+
+static raft_index_t __log_first_idx(void *log)
+{
+    return log_get_base(log) + 1;
+}
+
+static raft_index_t __log_current_idx(void *log)
+{
+    return log_get_current_idx(log);
+}
+
+static raft_index_t __log_count(void *log)
+{
+    return log_count(log);
+}
+
+raft_log_impl_t log_internal_impl = {
+    .free = __log_free,
+    .reset = __log_reset,
+    .append = __log_append,
+    .poll = __log_poll,
+    .del = __log_del,
+    .get = __log_get,
+    .get_from = __log_get_from,
+    .first_idx = __log_first_idx,
+    .current_idx = __log_current_idx,
+    .count = __log_count
+};
