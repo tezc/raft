@@ -36,7 +36,7 @@ typedef struct
     raft_entry_t* entries;
 
     /* callbacks */
-    log_cbs_t cb;
+    raft_log_cbs_t cb;
 
     void* raft;
 } log_private_t;
@@ -107,7 +107,7 @@ log_t* log_new(void)
     return log_alloc(INITIAL_CAPACITY);
 }
 
-void log_set_callbacks(log_t* me_, log_cbs_t* funcs, void* raft)
+void log_set_callbacks(log_t* me_, raft_log_cbs_t* funcs, void* raft)
 {
     log_private_t* me = (log_private_t*)me_;
 
@@ -317,6 +317,15 @@ raft_index_t log_get_base(log_t* me_)
 
 /* -------------------------------------------------------- */
 
+void *__log_init(void *raft, void *arg)
+{
+    log_t *log = log_new();
+    if (arg) {
+        log_set_callbacks(log, arg, raft);
+    }
+    return log;
+}
+
 static void __log_free(void *log)
 {
     log_free(log);
@@ -382,7 +391,8 @@ static raft_index_t __log_count(void *log)
     return log_count(log);
 }
 
-raft_log_impl_t log_internal_impl = {
+const raft_log_impl_t raft_log_internal_impl = {
+    .init = __log_init,
     .free = __log_free,
     .reset = __log_reset,
     .append = __log_append,

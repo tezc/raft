@@ -320,7 +320,7 @@ void TestRaft_server_append_entry_user_can_set_data_buf(CuTest * tc)
     raft_cbs_t funcs = {
         .persist_term = __raft_persist_term
     };
-    log_cbs_t log_funcs = {
+    raft_log_cbs_t log_funcs = {
         .log_offer = __raft_logentry_offer
     };
     char *buf = "aaa";
@@ -1610,7 +1610,7 @@ void TestRaft_follower_recv_appendentries_partial_failures(
     raft_cbs_t funcs = {
         .persist_term = __raft_persist_term
     };
-    log_cbs_t log_funcs = {
+    raft_log_cbs_t log_funcs = {
         .log_offer = __raft_log_offer_error,
         .log_pop = __raft_log_pop_error
     };
@@ -3940,7 +3940,7 @@ void TestRaft_leader_recv_appendentries_response_set_has_sufficient_logs_after_v
         .node_has_sufficient_logs = __raft_node_has_sufficient_logs,
         .log_get_node_id = __raft_log_get_node_id
     };
-    log_cbs_t log_funcs = {
+    raft_log_cbs_t log_funcs = {
         .log_offer = __raft_log_offer
     };
 

@@ -33,7 +33,7 @@ typedef struct {
     raft_node_id_t voted_for;
 
     /* log storage engine */
-    struct raft_log_impl *log_impl;
+    const struct raft_log_impl *log_impl;
     void *log;
 
     /* Volatile state: */

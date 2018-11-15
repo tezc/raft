@@ -60,7 +60,7 @@ raft_cbs_t funcs = {
     .log_get_node_id = __logentry_get_node_id
 };
 
-log_cbs_t log_funcs = {
+raft_log_cbs_t log_funcs = {
     .log_pop = __log_pop
 };
 
@@ -93,7 +93,7 @@ void TestLog_append_is_not_empty(CuTest * tc)
     e.id = 1;
 
     l = log_new();
-    log_cbs_t funcs = {
+    raft_log_cbs_t funcs = {
         .log_offer = __log_offer
     };
     log_set_callbacks(l, &funcs, r);
@@ -149,7 +149,7 @@ void TestLog_delete(CuTest * tc)
     raft_cbs_t funcs = {
         .log_get_node_id = __logentry_get_node_id
     };
-    log_cbs_t log_funcs = {
+    raft_log_cbs_t log_funcs = {
         .log_pop = __log_pop
     };
 
@@ -193,7 +193,7 @@ void TestLog_delete_onwards(CuTest * tc)
     raft_cbs_t funcs = {
         .log_get_node_id = __logentry_get_node_id
     };
-    log_cbs_t log_funcs = {
+    raft_log_cbs_t log_funcs = {
         .log_pop = __log_pop
     };
     raft_set_callbacks(r, &funcs, queue);
@@ -233,7 +233,7 @@ void TestLog_delete_handles_log_pop_failure(CuTest * tc)
     raft_cbs_t funcs = {
         .log_get_node_id = __logentry_get_node_id
     };
-    log_cbs_t log_funcs = {
+    raft_log_cbs_t log_funcs = {
         .log_pop = __log_pop_failing
     };
     raft_set_callbacks(r, &funcs, queue);
@@ -267,7 +267,7 @@ void TestLog_delete_fails_for_idx_zero(CuTest * tc)
     raft_cbs_t funcs = {
         .log_get_node_id = __logentry_get_node_id
     };
-    log_cbs_t log_funcs = {
+    raft_log_cbs_t log_funcs = {
         .log_pop = __log_pop
     };
     raft_set_callbacks(r, &funcs, queue);
@@ -302,7 +302,7 @@ void TestLog_poll(CuTest * tc)
     raft_cbs_t funcs = {
         .log_get_node_id = __logentry_get_node_id
     };
-    log_cbs_t log_funcs = {
+    raft_log_cbs_t log_funcs = {
         .log_pop = __log_pop
     };
     raft_set_callbacks(r, &funcs, queue);
@@ -553,7 +553,7 @@ void TestLog_delete_after_polling_from_double_append(CuTest * tc)
     raft_cbs_t funcs = {
         .log_get_node_id = __logentry_get_node_id
     };
-    log_cbs_t log_funcs = {
+    raft_log_cbs_t log_funcs = {
         .log_pop = __log_pop
     };
     raft_set_callbacks(r, &funcs, queue);
@@ -602,7 +602,7 @@ void TestLog_get_from_idx_with_base_off_by_one(CuTest * tc)
     raft_cbs_t funcs = {
         .log_get_node_id = __logentry_get_node_id
     };
-    log_cbs_t log_funcs = {
+    raft_log_cbs_t log_funcs = {
         .log_pop = __log_pop
     };
     raft_set_callbacks(r, &funcs, queue);

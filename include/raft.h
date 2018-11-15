@@ -409,8 +409,9 @@ typedef struct
 
 typedef struct raft_log_impl
 {
-    void (*reset)               (void *log, raft_index_t first_idx);
+    void *(*init)               (void *raft, void *arg);
     void (*free)                (void *log);
+    void (*reset)               (void *log, raft_index_t first_idx);
     int (*append)               (void *log, raft_entry_t *entry);
     int (*poll)                 (void *log, raft_index_t first_idx);
     int (*del)                  (void *log, raft_index_t from_idx, raft_index_t to_idx);
@@ -438,7 +439,7 @@ typedef struct
  * @return newly initialised Raft server */
 raft_server_t* raft_new();
 
-raft_server_t* raft_new_ex(raft_log_impl_t *log_impl, void *log);
+raft_server_t* raft_new_with_log(const raft_log_impl_t *log_impl, void *log_arg);
 
 /** De-initialise Raft server.
  * Frees all memory */
@@ -957,5 +958,36 @@ void raft_node_set_addition_committed(raft_node_t* me_, int committed);
 int raft_voting_change_is_in_progress(raft_server_t* me_);
 
 void *raft_get_log(raft_server_t* me_);
+
+typedef struct {
+    /** Callback for adding an entry to the log
+     * For safety reasons this callback MUST flush the change to disk.
+     * Return 0 on success.
+     * Return RAFT_ERR_SHUTDOWN if you want the server to shutdown. */
+
+    func_logentry_event_f log_offer;
+
+    /** Callback for removing the oldest entry from the log
+     * For safety reasons this callback MUST flush the change to disk.
+     * @note If memory was malloc'd in log_offer then this should be the right
+     *  time to free the memory. */
+    func_logentry_event_f log_poll;
+
+    /** Callback for removing the youngest entry from the log
+     * For safety reasons this callback MUST flush the change to disk.
+     * @note If memory was malloc'd in log_offer then this should be the right
+     *  time to free the memory. */
+    func_logentry_event_f log_pop;
+
+    /** Callback called for every existing log entry when clearing the log.
+     * If memory was malloc'd in log_offer and the entry doesn't get a chance
+     * to go through log_poll or log_pop, this is the last chance to free it.
+     */
+    func_logentry_event_f log_clear;
+} raft_log_cbs_t;
+
+extern const raft_log_impl_t raft_log_internal_impl;
+
+void *raft_log_internal_new(raft_log_cbs_t *cbs);
 
 #endif /* RAFT_H_ */

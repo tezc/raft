@@ -66,7 +66,7 @@ void raft_randomize_election_timeout(raft_server_t* me_)
     __log(me_, NULL, "randomize election timeout to %d", me->election_timeout_rand);
 }
 
-raft_server_t* raft_new_ex(raft_log_impl_t *log_impl, void *log)
+raft_server_t* raft_new_with_log(const raft_log_impl_t *log_impl, void *log_arg)
 {
     raft_server_private_t* me =
         (raft_server_private_t*)__raft_calloc(1, sizeof(raft_server_private_t));
@@ -79,7 +79,11 @@ raft_server_t* raft_new_ex(raft_log_impl_t *log_impl, void *log)
     me->election_timeout = 1000;
     raft_randomize_election_timeout((raft_server_t*)me);
     me->log_impl = log_impl;
-    me->log = log;
+    me->log = me->log_impl->init(me, log_arg);
+    if (!me->log) {
+        __raft_free(me);
+        return NULL;
+    }
     me->voting_cfg_change_log_idx = -1;
     raft_set_state((raft_server_t*)me, RAFT_STATE_FOLLOWER);
     me->current_leader = NULL;
@@ -94,8 +98,7 @@ extern raft_log_impl_t log_internal_impl;
 
 raft_server_t* raft_new(void)
 {
-    void *log = log_new();
-    return raft_new_ex(&log_internal_impl, log);
+    return raft_new_with_log(&raft_log_internal_impl, NULL);
 }
 
 void raft_set_callbacks(raft_server_t* me_, raft_cbs_t* funcs, void* udata)
@@ -1463,3 +1466,4 @@ void *raft_get_log(raft_server_t *me_)
     raft_server_private_t* me = (raft_server_private_t*)me_;
     return me->log;
 }
+
