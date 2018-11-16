@@ -138,9 +138,9 @@ void raft_node_set_has_sufficient_logs(raft_node_t* me_);
 
 int raft_votes_is_majority(const int nnodes, const int nvotes);
 
-void raft_handle_cfg_change(raft_server_t* me_, raft_entry_t* ety, const raft_index_t idx);
+void raft_handle_append_cfg_change(raft_server_t* me_, raft_entry_t* ety, const raft_index_t idx);
 
-void raft_pop_log(raft_server_t* me_, raft_entry_t* ety, const raft_index_t idx);
+void raft_handle_remove_cfg_change(raft_server_t* me_, raft_entry_t* ety, const raft_index_t idx);
 
 raft_index_t raft_get_num_snapshottable_logs(raft_server_t* me_);
 

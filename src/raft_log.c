@@ -219,7 +219,7 @@ raft_index_t log_count(log_t* me_)
     return ((log_private_t*)me_)->count;
 }
 
-int log_delete(log_t* me_, raft_index_t idx)
+static int __log_delete(log_t* me_, raft_index_t idx, func_entry_notify_f cb, void *cb_arg)
 {
     log_private_t* me = (log_private_t*)me_;
 
@@ -241,12 +241,19 @@ int log_delete(log_t* me_, raft_index_t idx)
             if (0 != e)
                 return e;
         }
-        /* Remove this */
-        raft_pop_log(me->raft, &me->entries[back], idx_tmp);
+
+        if (cb)
+            cb(cb_arg, &me->entries[back], idx_tmp);
+
         me->back = back;
         me->count--;
     }
     return 0;
+}
+
+int log_delete(log_t* me_, raft_index_t idx)
+{
+    return __log_delete(me_, idx, NULL, NULL);
 }
 
 int log_poll(log_t * me_, void** etyp)
@@ -365,9 +372,9 @@ static raft_entry_t *__log_get_from(void *log, raft_index_t idx, int *entries_n)
     return log_get_from_idx(log, idx, entries_n);
 }
 
-static int __log_pop(void *log, raft_index_t from_idx)
+static int __log_pop(void *log, raft_index_t from_idx, func_entry_notify_f cb, void *cb_arg)
 {
-    return log_delete(log, from_idx);
+    return __log_delete(log, from_idx, cb, cb_arg);
 }
 
 static int __log_poll(void *log, raft_index_t first_idx)

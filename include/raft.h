@@ -407,6 +407,24 @@ typedef struct
     func_log_f log;
 } raft_cbs_t;
 
+/** Notification callback can be provided by Raft when performing certain
+ * log operations.
+ *
+ * @param[in] arg Argument passed by Raft in the original call.
+ * @param[in] entry Entry for which notification is generated.
+ * @param[in] entry_idx Index of entry.
+ *
+ * The callback *must not* modify the entry or perform any preemptive
+ * log operation until it returns.
+ */
+typedef void (
+*func_entry_notify_f
+)   (
+    void* arg,
+    raft_entry_t *entry,
+    raft_index_t entry_idx
+    );
+
 typedef struct raft_log_impl
 {
     /** Log implementation construction, called exactly once when Raft
@@ -418,7 +436,7 @@ typedef struct raft_log_impl
      * @return Initialized log handle.  This handle is passed as 'log' on
      *      all subsequent calls.
      */
-    void *(*init)               (void *raft, void *arg);
+    void *(*init) (void *raft, void *arg);
 
     /** Log implementation destruction, called exactly once when Raft
      * shuts down.
@@ -427,7 +445,7 @@ typedef struct raft_log_impl
      *
      * @param[in] log The log handle.
      */
-    void (*free)                (void *log);
+    void (*free) (void *log);
 
     /** Reset log.  All entries should be deleted, and the log is configured
      * such that the next appended log entry would be assigned with the
@@ -441,7 +459,7 @@ typedef struct raft_log_impl
      *
      * @param[in] first_idx Index to assign to the first entry in the log.
      */
-    void (*reset)               (void *log, raft_index_t first_idx);
+    void (*reset) (void *log, raft_index_t first_idx);
 
     /** Append an entry to the log.
      * @param[in] entry Entry to append.
@@ -456,7 +474,7 @@ typedef struct raft_log_impl
      * 3. Consider an async option to make it possible to implement
      *    I/O in a background thread.
      */
-    int (*append)               (void *log, raft_entry_t *entry);
+    int (*append) (void *log, raft_entry_t *entry);
 
     /** Remove entries from the start of the log, as necessary when compacting
      * the log and deleting the oldest entries.
@@ -466,18 +484,20 @@ typedef struct raft_log_impl
      *  0 on success;
      *  -1 on error (e.g. log is empty).
      */
-    int (*poll)                 (void *log, raft_index_t first_idx);
+    int (*poll) (void *log, raft_index_t first_idx);
 
     /** Remove entries from the end of the log, as necessary when rolling back
      * append operations that have not been committed.
      *
      * @param[in] from_idx Index of first entry to be removed.  All entries
      *  starting from and including this index shall be removed.
+     * @param[in] cb Optional callback to execute for every removed entry.
+     * @param[in] cb_arg Argument to pass to callback.
      * @return
      *  0 on success;
      *  -1 on error.
      */
-    int (*pop)                  (void *log, raft_index_t from_idx);
+    int (*pop) (void *log, raft_index_t from_idx, func_entry_notify_f cb, void *cb_arg);
 
     /** Get a single entry from the log.
      *
@@ -490,7 +510,7 @@ typedef struct raft_log_impl
      *  Memory ownership should be clear here as well, we don't always want
      *  to return copies owned by caller!
      */
-    raft_entry_t* (*get)        (void *log, raft_index_t idx);
+    raft_entry_t* (*get) (void *log, raft_index_t idx);
 
     /** Get a batch of entries from the log.
      *
@@ -500,13 +520,13 @@ typedef struct raft_log_impl
      *  Pointer to array of entries;
      *  NULL if no entries found, etc.
      */
-    raft_entry_t* (*get_from)   (void *log, raft_index_t idx, int *entries_n);
+    raft_entry_t* (*get_from) (void *log, raft_index_t idx, int *entries_n);
 
     /** Get first entry's index.
      * @return
      *  Index of first entry.
      */
-    raft_index_t (*first_idx)   (void *log);
+    raft_index_t (*first_idx) (void *log);
 
     /** Get current (latest) entry's index.
      * @return
@@ -518,7 +538,7 @@ typedef struct raft_log_impl
      * @return
      *  Number of entries.
      */
-    raft_index_t (*count)       (void *log);
+    raft_index_t (*count) (void *log);
 } raft_log_impl_t;
 
 typedef struct
