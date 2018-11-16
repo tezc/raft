@@ -409,16 +409,115 @@ typedef struct
 
 typedef struct raft_log_impl
 {
+    /** Log implementation construction, called exactly once when Raft
+     * initializes.
+     *
+     * @param[in] raft The Raft server using the log.
+     * @param[in] arg User-specified initialization argument, as passed to
+     *      raft_new().
+     * @return Initialized log handle.  This handle is passed as 'log' on
+     *      all subsequent calls.
+     */
     void *(*init)               (void *raft, void *arg);
+
+    /** Log implementation destruction, called exactly once when Raft
+     * shuts down.
+     *
+     * All memory and resources allocated since init() should be released.
+     *
+     * @param[in] log The log handle.
+     */
     void (*free)                (void *log);
+
+    /** Reset log.  All entries should be deleted, and the log is configured
+     * such that the next appended log entry would be assigned with the
+     * specified index.
+     *
+     * A log implementation that has been initialized for the first time and
+     * contains no persisted data should implicitly perform reset(1).
+     *
+     * A reset operation with a higher first_idx is expected when log
+     * is compacted after a snapshot is taken.
+     *
+     * @param[in] first_idx Index to assign to the first entry in the log.
+     */
     void (*reset)               (void *log, raft_index_t first_idx);
+
+    /** Append an entry to the log.
+     * @param[in] entry Entry to append.
+     * @return
+     *  0 on success;
+     *  RAFT_ERR_SHUTDOWN server should shutdown;
+     *  RAFT_ERR_NOMEM memory allocation failure.
+     *
+     * @todo
+     * 1. Define data ownership so redundant copies are not necessary.
+     * 2. Batch append of multiple entries.
+     * 3. Consider an async option to make it possible to implement
+     *    I/O in a background thread.
+     */
     int (*append)               (void *log, raft_entry_t *entry);
+
+    /** Remove entries from the start of the log, as necessary when compacting
+     * the log and deleting the oldest entries.
+     *
+     * @param[in] first_idx Index of first entry to be left in log.
+     * @return
+     *  0 on success;
+     *  -1 on error (e.g. log is empty).
+     */
     int (*poll)                 (void *log, raft_index_t first_idx);
-    int (*del)                  (void *log, raft_index_t from_idx, raft_index_t to_idx);
+
+    /** Remove entries from the end of the log, as necessary when rolling back
+     * append operations that have not been committed.
+     *
+     * @param[in] from_idx Index of first entry to be removed.  All entries
+     *  starting from and including this index shall be removed.
+     * @return
+     *  0 on success;
+     *  -1 on error.
+     */
+    int (*pop)                  (void *log, raft_index_t from_idx);
+
+    /** Get a single entry from the log.
+     *
+     * @param[in] idx Index of entry to fetch.
+     * @return
+     *  Pointer to entry on success;
+     *  NULL if no entry in specified index.
+     *
+     * @todo
+     *  Memory ownership should be clear here as well, we don't always want
+     *  to return copies owned by caller!
+     */
     raft_entry_t* (*get)        (void *log, raft_index_t idx);
+
+    /** Get a batch of entries from the log.
+     *
+     * @param[in] idx Index of first entry to fetch.
+     * @param[out] entries_n Number of entries fetched (idx to end of log).
+     * @return
+     *  Pointer to array of entries;
+     *  NULL if no entries found, etc.
+     */
     raft_entry_t* (*get_from)   (void *log, raft_index_t idx, int *entries_n);
+
+    /** Get first entry's index.
+     * @return
+     *  Index of first entry.
+     */
     raft_index_t (*first_idx)   (void *log);
+
+    /** Get current (latest) entry's index.
+     * @return
+     *  Index of latest entry.
+     */
     raft_index_t (*current_idx) (void *log);
+
+    /** Get number of entries int he log.
+     * @return
+     *  Number of entries.
+     */
     raft_index_t (*count)       (void *log);
 } raft_log_impl_t;
 

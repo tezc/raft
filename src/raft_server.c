@@ -144,7 +144,7 @@ int raft_delete_entry_from_idx(raft_server_t* me_, raft_index_t idx)
     if (idx <= me->voting_cfg_change_log_idx)
         me->voting_cfg_change_log_idx = -1;
 
-    return me->log_impl->del(me->log, idx, me->log_impl->current_idx(me->log));
+    return me->log_impl->pop(me->log, idx);
 }
 
 int raft_election_start(raft_server_t* me_)
@@ -1261,7 +1261,7 @@ int raft_pop_entry(raft_server_t* me_)
 
     raft_index_t cur_idx = me->log_impl->current_idx(me->log);
 
-    return me->log_impl->del(me->log, cur_idx, cur_idx);
+    return me->log_impl->pop(me->log, cur_idx);
 }
 
 raft_index_t raft_get_first_entry_idx(raft_server_t* me_)

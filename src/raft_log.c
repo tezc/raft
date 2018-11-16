@@ -315,7 +315,17 @@ raft_index_t log_get_base(log_t* me_)
     return ((log_private_t*)me_)->base;
 }
 
-/* -------------------------------------------------------- */
+/**
+ * The following functions wrap raft_log.c implementation to make it compatible
+ * with raft_log_impl_t binding.
+ *
+ * The rationale for doing this and not modifying raft_log.c directly is to
+ * leave test_log.c intact.
+ *
+ * @todo Ideally test_log.c should be implemented (and extended) to use
+ *      raft_log_impl_t, so it can become a test harness for testing arbitrary
+ *      log implementations.
+ */
 
 void *__log_init(void *raft, void *arg)
 {
@@ -355,11 +365,8 @@ static raft_entry_t *__log_get_from(void *log, raft_index_t idx, int *entries_n)
     return log_get_from_idx(log, idx, entries_n);
 }
 
-static int __log_del(void *log, raft_index_t from_idx, raft_index_t to_idx)
+static int __log_pop(void *log, raft_index_t from_idx)
 {
-    /* TODO: Get rid of the following logic; it is here just to postpone
-     * changing the poll/pop convention.
-     */
     return log_delete(log, from_idx);
 }
 
@@ -397,7 +404,7 @@ const raft_log_impl_t raft_log_internal_impl = {
     .reset = __log_reset,
     .append = __log_append,
     .poll = __log_poll,
-    .del = __log_del,
+    .pop = __log_pop,
     .get = __log_get,
     .get_from = __log_get_from,
     .first_idx = __log_first_idx,
