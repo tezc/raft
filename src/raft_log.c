@@ -367,9 +367,22 @@ static raft_entry_t *__log_get(void *log, raft_index_t idx)
     return log_get_at_idx(log, idx);
 }
 
-static raft_entry_t *__log_get_from(void *log, raft_index_t idx, int *entries_n)
+static int __log_get_batch(void *log, raft_index_t idx, int entries_n, raft_entry_t **entries)
 {
-    return log_get_from_idx(log, idx, entries_n);
+    int n, i;
+    raft_entry_t *r = log_get_from_idx(log, idx, &n);
+
+    if (!r || n < 1) {
+        return 0;
+    }
+
+    if (n > entries_n)
+        n = entries_n;
+
+    for (i = 0; i < n; i++) {
+        entries[i] = &r[i];
+    }
+    return n;
 }
 
 static int __log_pop(void *log, raft_index_t from_idx, func_entry_notify_f cb, void *cb_arg)
@@ -413,7 +426,7 @@ const raft_log_impl_t raft_log_internal_impl = {
     .poll = __log_poll,
     .pop = __log_pop,
     .get = __log_get,
-    .get_from = __log_get_from,
+    .get_batch = __log_get_batch,
     .first_idx = __log_first_idx,
     .current_idx = __log_current_idx,
     .count = __log_count

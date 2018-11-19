@@ -468,6 +468,11 @@ typedef struct raft_log_impl
      *  RAFT_ERR_SHUTDOWN server should shutdown;
      *  RAFT_ERR_NOMEM memory allocation failure.
      *
+     * @note
+     *  The passed raft_entry_t is expected to be allocated on the heap.
+     *  It becomes owned by the log implementation if the operation is successful,
+     *  so caller should not free it.
+     *
      * @todo
      * 1. Define data ownership so redundant copies are not necessary.
      * 2. Batch append of multiple entries.
@@ -506,21 +511,29 @@ typedef struct raft_log_impl
      *  Pointer to entry on success;
      *  NULL if no entry in specified index.
      *
-     * @todo
-     *  Memory ownership should be clear here as well, we don't always want
-     *  to return copies owned by caller!
+     * @note
+     *  Returned entry memory is owned by the log and may be freed on next log
+     *  operation, so caller must make a copy if it is going to be retained beyond
+     *  this scope.
      */
     raft_entry_t* (*get) (void *log, raft_index_t idx);
 
     /** Get a batch of entries from the log.
      *
      * @param[in] idx Index of first entry to fetch.
-     * @param[out] entries_n Number of entries fetched (idx to end of log).
+     * @param[in] entries_n Length of entries (max. entries to fetch).
+     * @param[out] entries An initialized array of raft_entry_t*.
      * @return
-     *  Pointer to array of entries;
-     *  NULL if no entries found, etc.
+     *  Number of entries fetched;
+     *  -1 on error.
+     *
+     * @note
+     *  Returned entries memory is owned by the log and may be freed on next log
+     *  operation, so caller must make a copy if it is going to be retained beyond
+     *  this scope.
      */
-    raft_entry_t* (*get_from) (void *log, raft_index_t idx, int *entries_n);
+    int (*get_batch) (void *log, raft_index_t idx, int entries_n,
+            raft_entry_t **entries);
 
     /** Get first entry's index.
      * @return

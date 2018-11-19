@@ -2683,7 +2683,7 @@ void TestRaft_leader_sends_appendentries_with_prevLogIdx(
     raft_send_appendentries(r, raft_get_node(r, 2));
     msg_appendentries_t*  ae = sender_poll_msg_data(sender);
     CuAssertTrue(tc, NULL != ae);
-    CuAssertTrue(tc, ae->prev_log_idx == 0);
+    CuAssertIntEquals(tc, 0, ae->prev_log_idx);
 
     raft_node_t* n = raft_get_node(r, 2);
 
@@ -2699,10 +2699,10 @@ void TestRaft_leader_sends_appendentries_with_prevLogIdx(
     raft_send_appendentries(r, raft_get_node(r, 2));
     ae = sender_poll_msg_data(sender);
     CuAssertTrue(tc, NULL != ae);
-    CuAssertTrue(tc, ae->prev_log_idx == 0);
-    CuAssertTrue(tc, ae->n_entries == 1);
-    CuAssertTrue(tc, ae->entries[0].id == 100);
-    CuAssertTrue(tc, ae->entries[0].term == 2);
+    CuAssertIntEquals(tc, 0, ae->prev_log_idx);
+    CuAssertIntEquals(tc, 1, ae->n_entries);
+    CuAssertIntEquals(tc, 100, ae->entries[0].id);
+    CuAssertIntEquals(tc, 2, ae->entries[0].term);
 
     /* set next_idx */
     /* receive appendentries messages */

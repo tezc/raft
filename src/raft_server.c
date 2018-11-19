@@ -808,7 +808,7 @@ int raft_append_entry(raft_server_t* me_, raft_entry_t* ety)
     raft_server_private_t* me = (raft_server_private_t*)me_;
 
     int e = me->log_impl->append(me->log, ety);
-    if (e < 0) 
+    if (e < 0)
         return e;
 
     if (raft_entry_is_voting_cfg_change(ety))
@@ -891,8 +891,35 @@ int raft_apply_entry(raft_server_t* me_)
 
 raft_entry_t* raft_get_entries_from_idx(raft_server_t* me_, raft_index_t idx, int* n_etys)
 {
+    /* TODO: This is inefficient but there to hide changes in log implementation so
+     * they don't propagate to msg_appendentries_t etc.
+     */
+    if (raft_get_current_idx(me_) < idx) {
+        *n_etys = 0;
+        return NULL;
+    }
+
     raft_server_private_t* me = (raft_server_private_t*)me_;
-    return me->log_impl->get_from(me->log, idx, n_etys);
+    int size = raft_get_current_idx(me_) - idx + 1;
+    raft_entry_t **eptrs = __raft_malloc(size * sizeof(raft_entry_t*));
+    int n = me->log_impl->get_batch(me->log, idx, size, eptrs);
+
+    if (n < 1) {
+        __raft_free(eptrs);
+        *n_etys = 0;
+        return NULL;
+    }
+
+    raft_entry_t *result = __raft_malloc(n * sizeof(raft_entry_t));
+    int i;
+    for (i = 0; i < n; i++) {
+        result[i] = *eptrs[i];
+    }
+
+    *n_etys = n;
+    __raft_free(eptrs);
+    
+    return result;
 }
 
 int raft_send_appendentries(raft_server_t* me_, raft_node_t* node)
@@ -949,7 +976,10 @@ int raft_send_appendentries(raft_server_t* me_, raft_node_t* node)
           ae.prev_log_idx,
           ae.prev_log_term);
 
-    return me->cb.send_appendentries(me_, me->udata, node, &ae);
+    int res = me->cb.send_appendentries(me_, me->udata, node, &ae);
+    __raft_free(ae.entries);
+
+    return res;
 }
 
 int raft_send_appendentries_all(raft_server_t* me_)
