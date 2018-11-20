@@ -483,7 +483,7 @@ int raft_recv_appendentries(
     int i;
     for (i = 0; i < ae->n_entries; i++)
     {
-        raft_entry_t* ety = &ae->entries[i];
+        raft_entry_t* ety = ae->entries[i];
         raft_index_t ety_index = ae->prev_log_idx + 1 + i;
         raft_entry_t* existing_ety = raft_get_entry_from_idx(me_, ety_index);
         if (existing_ety && existing_ety->term != ety->term)
@@ -510,7 +510,7 @@ int raft_recv_appendentries(
     /* Pick up remainder in case of mismatch or missing entry */
     for (; i < ae->n_entries; i++)
     {
-        e = raft_append_entry(me_, &ae->entries[i]);
+        e = raft_append_entry(me_, ae->entries[i]);
         if (0 != e)
             goto out;
         r->current_idx = ae->prev_log_idx + 1 + i;
@@ -889,11 +889,8 @@ int raft_apply_entry(raft_server_t* me_)
     return 0;
 }
 
-raft_entry_t* raft_get_entries_from_idx(raft_server_t* me_, raft_index_t idx, int* n_etys)
+raft_entry_t** raft_get_entries_from_idx(raft_server_t* me_, raft_index_t idx, int* n_etys)
 {
-    /* TODO: This is inefficient but there to hide changes in log implementation so
-     * they don't propagate to msg_appendentries_t etc.
-     */
     if (raft_get_current_idx(me_) < idx) {
         *n_etys = 0;
         return NULL;
@@ -901,25 +898,17 @@ raft_entry_t* raft_get_entries_from_idx(raft_server_t* me_, raft_index_t idx, in
 
     raft_server_private_t* me = (raft_server_private_t*)me_;
     int size = raft_get_current_idx(me_) - idx + 1;
-    raft_entry_t **eptrs = __raft_malloc(size * sizeof(raft_entry_t*));
-    int n = me->log_impl->get_batch(me->log, idx, size, eptrs);
+    raft_entry_t **e = __raft_malloc(size * sizeof(raft_entry_t*));
+    int n = me->log_impl->get_batch(me->log, idx, size, e);
 
     if (n < 1) {
-        __raft_free(eptrs);
+        __raft_free(e);
         *n_etys = 0;
         return NULL;
     }
 
-    raft_entry_t *result = __raft_malloc(n * sizeof(raft_entry_t));
-    int i;
-    for (i = 0; i < n; i++) {
-        result[i] = *eptrs[i];
-    }
-
     *n_etys = n;
-    __raft_free(eptrs);
-    
-    return result;
+    return e;
 }
 
 int raft_send_appendentries(raft_server_t* me_, raft_node_t* node)
@@ -1499,3 +1488,28 @@ void *raft_get_log(raft_server_t *me_)
     return me->log;
 }
 
+raft_entry_t *raft_entry_new(void)
+{
+    raft_entry_t *ety = __raft_calloc(1, sizeof(raft_entry_t));
+    ety->refs = 1;
+
+    return ety;
+}
+
+void raft_entry_hold(raft_entry_t *ety)
+{
+    ety->refs++;
+}
+
+void raft_entry_release(raft_entry_t *ety)
+{
+    assert(ety->refs > 0);
+    ety->refs--;
+
+    if (!ety->refs) {
+        if (ety->data.buf) {
+            __raft_free(ety->data.buf);
+        }
+        __raft_free(ety);
+    }
+}

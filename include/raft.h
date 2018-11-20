@@ -98,7 +98,10 @@ typedef struct
     raft_entry_id_t id;
 
     /** type of entry */
-    int type;
+    short type;
+
+    /** number of references */
+    short refs;
 
     /** private local data */
     void *user_data;
@@ -178,8 +181,8 @@ typedef struct
     /** number of entries within this message */
     int n_entries;
 
-    /** array of entries within this message */
-    msg_entry_t* entries;
+    /** array of pointers to entries within this message */
+    msg_entry_t** entries;
 } msg_appendentries_t;
 
 /** Appendentries response message.
@@ -1117,6 +1120,20 @@ typedef struct {
      */
     func_logentry_event_f log_clear;
 } raft_log_cbs_t;
+
+/* A raft_entry_t is a key data structure, holding information about a 
+ * Raft log entry.
+ *
+ * We aim to manipulate it in an efficient way while leaving it sufficiently
+ * abstract so it's suitable for different log implementations.
+ *
+ */
+
+raft_entry_t *raft_entry_new(void);
+
+void raft_entry_hold(raft_entry_t *ety);
+
+void raft_entry_release(raft_entry_t *ety);
 
 extern const raft_log_impl_t raft_log_internal_impl;
 

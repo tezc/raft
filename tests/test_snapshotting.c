@@ -657,11 +657,9 @@ void TestRaft_follower_recv_appendentries_is_successful_when_previous_log_idx_eq
     ae.prev_log_idx = 2;
     ae.prev_log_term = 2;
     /* include entries */
-    msg_entry_t e[5];
-    memset(&e, 0, sizeof(msg_entry_t) * 4);
-    e[0].term = 3;
-    e[0].id = 3;
-    ae.entries = e;
+    msg_entry_t e = { .id = 3, .term = 3 };
+    msg_entry_t *e_array[1] = { &e };
+    ae.entries = e_array;
     ae.n_entries = 1;
     CuAssertIntEquals(tc, 0, raft_recv_appendentries(r, raft_get_node(r, 2), &ae, &aer));
     CuAssertIntEquals(tc, 1, aer.success);
