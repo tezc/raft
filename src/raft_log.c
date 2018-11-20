@@ -367,22 +367,9 @@ static raft_entry_t *__log_get(void *log, raft_index_t idx)
     return log_get_at_idx(log, idx);
 }
 
-static int __log_get_batch(void *log, raft_index_t idx, int entries_n, raft_entry_t **entries)
+static raft_entry_t *__log_get_batch(void *log, raft_index_t idx, int *entries_n)
 {
-    int n, i;
-    raft_entry_t *r = log_get_from_idx(log, idx, &n);
-
-    if (!r || n < 1) {
-        return 0;
-    }
-
-    if (n > entries_n)
-        n = entries_n;
-
-    for (i = 0; i < n; i++) {
-        entries[i] = &r[i];
-    }
-    return n;
+    return log_get_from_idx(log, idx, entries_n);
 }
 
 static int __log_pop(void *log, raft_index_t from_idx, func_entry_notify_f cb, void *cb_arg)

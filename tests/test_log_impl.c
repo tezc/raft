@@ -420,10 +420,15 @@ void TestLogImpl_get_from_idx_with_base_off_by_one(CuTest * tc)
     CuAssertIntEquals(tc, 1, impl->count(l));
 
     /* get off-by-one index */
-    raft_entry_t *e[1];
-    CuAssertIntEquals(tc, impl->get_batch(l, 1, 1, e), 0);
+    int n;
+    raft_entry_t *e;
+    e = impl->get_batch(l, 1, &n);
+    CuAssertPtrEquals(tc, e, NULL);
+    CuAssertIntEquals(tc, n, 0);
 
     /* now get the correct index */
-    CuAssertIntEquals(tc, impl->get_batch(l, 2, 1, e), 1);
-    CuAssertIntEquals(tc, e[0]->id, 2);
+    e = impl->get_batch(l, 2, &n);
+    CuAssertPtrNotNull(tc, e);
+    CuAssertIntEquals(tc, n, 1);
+    CuAssertIntEquals(tc, e->id, 2);
 }

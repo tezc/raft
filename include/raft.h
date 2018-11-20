@@ -521,19 +521,12 @@ typedef struct raft_log_impl
     /** Get a batch of entries from the log.
      *
      * @param[in] idx Index of first entry to fetch.
-     * @param[in] entries_n Length of entries (max. entries to fetch).
-     * @param[out] entries An initialized array of raft_entry_t*.
+     * @param[out] entries_n Number of entries fetched (idx to end of log).
      * @return
-     *  Number of entries fetched;
-     *  -1 on error.
-     *
-     * @note
-     *  Returned entries memory is owned by the log and may be freed on next log
-     *  operation, so caller must make a copy if it is going to be retained beyond
-     *  this scope.
+     *  Pointer to array of entries;
+     *  NULL if no entries found, etc.
      */
-    int (*get_batch) (void *log, raft_index_t idx, int entries_n,
-            raft_entry_t **entries);
+    raft_entry_t* (*get_batch) (void *log, raft_index_t idx, int *entries_n);
 
     /** Get first entry's index.
      * @return
