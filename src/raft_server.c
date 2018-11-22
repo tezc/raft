@@ -132,7 +132,7 @@ void raft_clear(raft_server_t* me_)
     me->last_applied_idx = 0;
     me->num_nodes = 0;
     me->node = NULL;
-    me->log_impl->reset(me->log, 1);
+    me->log_impl->reset(me->log, 1, 1);
 }
 
 int raft_delete_entry_from_idx(raft_server_t* me_, raft_index_t idx)
@@ -1431,7 +1431,7 @@ int raft_begin_load_snapshot(
     raft_set_state((raft_server_t*)me, RAFT_STATE_FOLLOWER);
     me->current_leader = NULL;
 
-    me->log_impl->reset(me->log, last_included_index + 1);
+    me->log_impl->reset(me->log, last_included_index + 1, last_included_term);
 
     if (raft_get_commit_idx(me_) < last_included_index)
         raft_set_commit_idx(me_, last_included_index);

@@ -290,7 +290,7 @@ void TestLogImpl_reset_after_compaction(CuTest * tc)
     CuAssertIntEquals(tc, 0, impl->current_idx(l));
 
     /* Reset first_idx==1 indicates our next entry is going to be 10 */
-    impl->reset(l, 10);
+    impl->reset(l, 10, 1);
 
     /* Current index is 9 (first_idx - 1), but log is empty */
     CuAssertIntEquals(tc, 9, impl->current_idx(l));
@@ -313,7 +313,7 @@ void TestLogImpl_load_from_snapshot_clears_log(CuTest * tc)
     CuAssertIntEquals(tc, 2, impl->count(l));
     CuAssertIntEquals(tc, 2, impl->current_idx(l));
 
-    impl->reset(l, 10);
+    impl->reset(l, 10, 1);
     CuAssertIntEquals(tc, 0, impl->count(l));
     CuAssertIntEquals(tc, 9, impl->current_idx(l));
 }

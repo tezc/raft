@@ -462,7 +462,7 @@ typedef struct raft_log_impl
      *
      * @param[in] first_idx Index to assign to the first entry in the log.
      */
-    void (*reset) (void *log, raft_index_t first_idx);
+    void (*reset) (void *log, raft_index_t first_idx, raft_term_t term);
 
     /** Append an entry to the log.
      * @param[in] entry Entry to append.

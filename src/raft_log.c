@@ -348,7 +348,7 @@ static void __log_free(void *log)
     log_free(log);
 }
 
-static void __log_reset(void *log, raft_index_t first_idx)
+static void __log_reset(void *log, raft_index_t first_idx, raft_term_t term)
 {
     log_clear_entries(log);
     log_clear(log);
