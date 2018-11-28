@@ -886,6 +886,8 @@ int raft_apply_entry(raft_server_t* me_)
             break;
     }
 
+    raft_entry_release(ety);
+
     return 0;
 }
 
@@ -1161,7 +1163,7 @@ int raft_entry_is_cfg_change(raft_entry_t* ety)
         RAFT_LOGTYPE_REMOVE_NODE == ety->type);
 }
 
-void raft_handle_append_cfg_change(raft_server_t* me_, raft_entry_t* ety, const raft_index_t idx)
+void raft_handle_append_cfg_change(raft_server_t* me_, raft_entry_t* ety, raft_index_t idx)
 {
     raft_server_private_t* me = (raft_server_private_t*)me_;
 

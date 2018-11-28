@@ -1139,4 +1139,6 @@ extern const raft_log_impl_t raft_log_internal_impl;
 
 void *raft_log_internal_new(raft_log_cbs_t *cbs);
 
+void raft_handle_append_cfg_change(raft_server_t* me_, raft_entry_t* ety, raft_index_t idx);
+
 #endif /* RAFT_H_ */
