@@ -262,6 +262,7 @@ raft_term_t raft_get_snapshot_last_term(raft_server_t *me_)
 void raft_set_snapshot_metadata(raft_server_t *me_, raft_term_t term, raft_index_t idx)
 {
     raft_server_private_t* me = (raft_server_private_t*)me_;
+    me->last_applied_idx = idx;
     me->saved_snapshot_last_term = me->snapshot_last_term;
     me->saved_snapshot_last_idx = me->snapshot_last_idx;
     me->snapshot_last_term = term;
