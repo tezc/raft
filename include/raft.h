@@ -1121,7 +1121,7 @@ typedef struct {
     func_logentry_event_f log_clear;
 } raft_log_cbs_t;
 
-/* A raft_entry_t is a key data structure, holding information about a 
+/* A raft_entry_t is a key data structure, holding information about a
  * Raft log entry.
  *
  * We aim to manipulate it in an efficient way while leaving it sufficiently
@@ -1134,6 +1134,8 @@ raft_entry_t *raft_entry_new(void);
 void raft_entry_hold(raft_entry_t *ety);
 
 void raft_entry_release(raft_entry_t *ety);
+
+void raft_entry_release_list(raft_entry_t **ety_list, size_t len);
 
 extern const raft_log_impl_t raft_log_internal_impl;
 

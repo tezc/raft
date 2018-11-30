@@ -376,10 +376,11 @@ int raft_recv_appendentries_response(raft_server_t* me_,
             if (raft_get_num_voting_nodes(me_) / 2 < votes)
                 raft_set_commit_idx(me_, point);
         }
+        raft_entry_release(ety);
     }
 
     /* Aggressively send remaining entries */
-    if (raft_get_entry_from_idx(me_, raft_node_get_next_idx(node)))
+    if (raft_node_get_next_idx(node) <= raft_get_current_idx(me_))
         raft_send_appendentries(me_, node);
 
     /* periodic applies committed entries lazily */
@@ -845,8 +846,10 @@ int raft_apply_entry(raft_server_t* me_)
     if (me->cb.applylog)
     {
         int e = me->cb.applylog(me_, me->udata, ety, me->last_applied_idx);
-        if (RAFT_ERR_SHUTDOWN == e)
+        if (RAFT_ERR_SHUTDOWN == e) {
+            raft_entry_release(ety);
             return RAFT_ERR_SHUTDOWN;
+        }
     }
 
     /* voting cfg change is now complete.
@@ -857,7 +860,7 @@ int raft_apply_entry(raft_server_t* me_)
         me->voting_cfg_change_log_idx = -1;
 
     if (!raft_entry_is_cfg_change(ety))
-        return 0;
+        goto exit;
 
     raft_node_id_t node_id = me->cb.log_get_node_id(me_, raft_get_udata(me_), ety, log_idx);
     raft_node_t* node = raft_get_node(me_, node_id);
@@ -886,6 +889,7 @@ int raft_apply_entry(raft_server_t* me_)
             break;
     }
 
+exit:
     raft_entry_release(ety);
 
     return 0;
@@ -956,6 +960,7 @@ int raft_send_appendentries(raft_server_t* me_, raft_node_t* node)
         {
             ae.prev_log_idx = next_idx - 1;
             ae.prev_log_term = prev_ety->term;
+            raft_entry_release(prev_ety);
         }
     }
 
@@ -968,6 +973,7 @@ int raft_send_appendentries(raft_server_t* me_, raft_node_t* node)
           ae.prev_log_term);
 
     int res = me->cb.send_appendentries(me_, me->udata, node, &ae);
+    raft_entry_release_list(ae.entries, ae.n_entries);
     __raft_free(ae.entries);
 
     return res;
@@ -1513,5 +1519,14 @@ void raft_entry_release(raft_entry_t *ety)
             __raft_free(ety->data.buf);
         }
         __raft_free(ety);
+    }
+}
+
+void raft_entry_release_list(raft_entry_t **ety_list, size_t len)
+{
+    size_t i;
+
+    for (i = 0; i < len; i++) {
+        raft_entry_release(ety_list[i]);
     }
 }

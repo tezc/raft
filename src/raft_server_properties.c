@@ -219,8 +219,11 @@ raft_term_t raft_get_last_log_term(raft_server_t* me_)
     if (0 < current_idx)
     {
         raft_entry_t* ety = raft_get_entry_from_idx(me_, current_idx);
-        if (ety)
-            return ety->term;
+        if (ety) {
+            raft_term_t term = ety->term;
+            raft_entry_release(ety);
+            return term;
+        }
     }
     return 0;
 }
