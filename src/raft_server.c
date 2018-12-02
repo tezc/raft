@@ -319,6 +319,9 @@ int raft_recv_appendentries_response(raft_server_t* me_,
         raft_index_t next_idx = raft_node_get_next_idx(node);
         assert(0 < next_idx);
         /* Stale response -- ignore */
+        __log(me_, node,
+                "appendentries failure: next_idx=%lu current_idx=%lu match_idx=%lu log-current-idx=%lu\n",
+                next_idx, r->current_idx, match_idx, raft_get_current_idx(me_));
         if (r->current_idx < match_idx)
             return 0;
         if (r->current_idx < next_idx - 1)
@@ -376,10 +379,18 @@ int raft_recv_appendentries_response(raft_server_t* me_,
             if (raft_get_num_voting_nodes(me_) / 2 < votes)
                 raft_set_commit_idx(me_, point);
         }
-        raft_entry_release(ety);
+        if (ety)
+            raft_entry_release(ety);
     }
 
     /* Aggressively send remaining entries */
+    raft_entry_t *ety = raft_get_entry_from_idx(me_, raft_node_get_next_idx(node));
+    __log(me_, node, "---> next_idx=%lu ety=%lu current_idx=%lu",
+            raft_node_get_next_idx(node),
+            ety ? ety->id : 0,
+            raft_get_current_idx(me_));
+    if (ety) raft_entry_release(ety);
+
     if (raft_node_get_next_idx(node) <= raft_get_current_idx(me_))
         raft_send_appendentries(me_, node);
 
@@ -416,8 +427,10 @@ int raft_recv_appendentries(
     else if (me->current_term < ae->term)
     {
         e = raft_set_current_term(me_, ae->term);
-        if (0 != e)
+        if (0 != e) {
+            __log(me_, node, "raft_set_current_term() failed: %d", e);
             goto out;
+        }
         raft_become_follower(me_);
     }
     else if (ae->term < me->current_term)
@@ -471,6 +484,8 @@ int raft_recv_appendentries(
             }
             /* Delete all the following log entries because they don't match */
             e = raft_delete_entry_from_idx(me_, ae->prev_log_idx);
+            if (e != 0)
+                __log(me_, node, "raft_delete_entry_from_idx failed");
             goto out;
         }
     }
@@ -499,8 +514,10 @@ int raft_recv_appendentries(
                 goto out;
             }
             e = raft_delete_entry_from_idx(me_, ety_index);
-            if (0 != e)
+            if (0 != e) {
+                __log(me_, node, "raft_delete_entry_from_idx failed");
                 goto out;
+            }
             break;
         }
         else if (!existing_ety)
@@ -512,8 +529,10 @@ int raft_recv_appendentries(
     for (; i < ae->n_entries; i++)
     {
         e = raft_append_entry(me_, ae->entries[i]);
-        if (0 != e)
+        if (0 != e) {
+            __log(me_, node, "raft_append_entry failed");
             goto out;
+        }
         r->current_idx = ae->prev_log_idx + 1 + i;
     }
 
@@ -964,7 +983,7 @@ int raft_send_appendentries(raft_server_t* me_, raft_node_t* node)
         }
     }
 
-    __log(me_, node, "sending appendentries node: ci:%d comi:%d t:%d lc:%d pli:%d plt:%d",
+    __log(me_, node, "sending appendentries: ci:%d comi:%d t:%d lc:%d pli:%d plt:%d",
           raft_get_current_idx(me_),
           raft_get_commit_idx(me_),
           ae.term,
