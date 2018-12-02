@@ -12,6 +12,8 @@
 #include "raft_log.h"
 #include "raft_private.h"
 
+#include "helpers.h"
+
 static int __logentry_get_node_id(
     raft_server_t* raft,
     void *udata,
@@ -444,25 +446,19 @@ void TestLog_front_pushes_across_boundary(CuTest * tc)
     void* r = __set_up();
 
     void *l;
-    raft_entry_t e1, e2, e3;
 
-    memset(&e1, 0, sizeof(raft_entry_t));
-    memset(&e2, 0, sizeof(raft_entry_t));
-    memset(&e3, 0, sizeof(raft_entry_t));
-
-    e1.id = 1;
-    e2.id = 2;
-    e3.id = 3;
+    raft_entry_t *e1 = __MAKE_ENTRY(1, 1, "aa");
+    raft_entry_t *e2 = __MAKE_ENTRY(2, 1, "aa");
 
     l = log_alloc(1);
     log_set_callbacks(l, &log_funcs, r);
 
     raft_entry_t* ety;
 
-    CuAssertIntEquals(tc, 0, log_append_entry(l, &e1));
+    CuAssertIntEquals(tc, 0, log_append_entry(l, e1));
     CuAssertIntEquals(tc, log_poll(l, (void*)&ety), 0);
     CuAssertIntEquals(tc, ety->id, 1);
-    CuAssertIntEquals(tc, 0, log_append_entry(l, &e2));
+    CuAssertIntEquals(tc, 0, log_append_entry(l, e2));
     CuAssertIntEquals(tc, log_poll(l, (void*)&ety), 0);
     CuAssertIntEquals(tc, ety->id, 2);
 }
@@ -637,8 +633,9 @@ void TestLog_get_from_idx_with_base_off_by_one(CuTest * tc)
     CuAssertIntEquals(tc, n_etys, 0);
 
     /* now get the correct index */
-    ety = log_get_from_idx(l, 2, &n_etys);
-    CuAssertPtrNotNull(tc, ety);
+    raft_entry_t** e;
+    e = log_get_from_idx(l, 2, &n_etys);
+    CuAssertPtrNotNull(tc, e);
     CuAssertIntEquals(tc, n_etys, 1);
-    CuAssertIntEquals(tc, ety->id, 2);
+    CuAssertIntEquals(tc, e[0]->id, 2);
 }

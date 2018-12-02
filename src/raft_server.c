@@ -840,7 +840,7 @@ int raft_apply_entry(raft_server_t* me_)
         return -1;
 
     __log(me_, NULL, "applying log: %d, id: %d size: %d",
-          log_idx, ety->id, ety->data.len);
+          log_idx, ety->id, ety->data_len);
 
     me->last_applied_idx++;
     if (me->cb.applylog)
@@ -1496,9 +1496,10 @@ void *raft_get_log(raft_server_t *me_)
     return me->log;
 }
 
-raft_entry_t *raft_entry_new(void)
+raft_entry_t *raft_entry_new(unsigned int data_len)
 {
-    raft_entry_t *ety = __raft_calloc(1, sizeof(raft_entry_t));
+    raft_entry_t *ety = __raft_calloc(1, sizeof(raft_entry_t) + data_len);
+    ety->data_len = data_len;
     ety->refs = 1;
 
     return ety;
@@ -1515,9 +1516,6 @@ void raft_entry_release(raft_entry_t *ety)
     ety->refs--;
 
     if (!ety->refs) {
-        if (ety->data.buf) {
-            __raft_free(ety->data.buf);
-        }
         __raft_free(ety);
     }
 }

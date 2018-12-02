@@ -106,7 +106,11 @@ typedef struct
     /** private local data */
     void *user_data;
 
-    raft_entry_data_t data;
+    /** data length */
+    unsigned int data_len;
+
+    /** data */
+    char data[0];
 } raft_entry_t;
 
 /** Message sent from client to server.
@@ -1129,7 +1133,7 @@ typedef struct {
  *
  */
 
-raft_entry_t *raft_entry_new(void);
+raft_entry_t *raft_entry_new(unsigned int data_len);
 
 void raft_entry_hold(raft_entry_t *ety);
 

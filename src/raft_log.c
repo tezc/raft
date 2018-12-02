@@ -33,7 +33,7 @@ typedef struct
     /* we compact the log, and thus need to increment the Base Log Index */
     raft_index_t base;
 
-    raft_entry_t* entries;
+    raft_entry_t** entries;
 
     /* callbacks */
     raft_log_cbs_t cb;
@@ -50,12 +50,12 @@ static int mod(raft_index_t a, raft_index_t b)
 static int __ensurecapacity(log_private_t * me)
 {
     raft_index_t i, j;
-    raft_entry_t *temp;
+    raft_entry_t **temp;
 
     if (me->count < me->size)
         return 0;
 
-    temp = (raft_entry_t*)__raft_calloc(1, sizeof(raft_entry_t) * me->size * 2);
+    temp = (raft_entry_t**)__raft_calloc(1, sizeof(raft_entry_t *) * me->size * 2);
     if (!temp)
         return RAFT_ERR_NOMEM;
 
@@ -63,7 +63,7 @@ static int __ensurecapacity(log_private_t * me)
     {
         if (j == me->size)
             j = 0;
-        memcpy(&temp[i], &me->entries[j], sizeof(raft_entry_t));
+        temp[i] = me->entries[j];
     }
 
     /* clean up old entries */
@@ -94,7 +94,7 @@ log_t* log_alloc(raft_index_t initial_size)
         return NULL;
     me->size = initial_size;
     log_clear((log_t*)me);
-    me->entries = (raft_entry_t*)__raft_calloc(1, sizeof(raft_entry_t) * me->size);
+    me->entries = (raft_entry_t**)__raft_calloc(1, sizeof(raft_entry_t *) * me->size);
     if (!me->entries) {
         __raft_free(me);
         return NULL;
@@ -135,7 +135,7 @@ void log_clear_entries(log_t* me_)
     for (i = me->base; i <= me->base + me->count; i++)
     {
         me->cb.log_clear(me->raft, raft_get_udata(me->raft),
-                          &me->entries[(me->front + i - me->base) % me->size], i);
+                          me->entries[(me->front + i - me->base) % me->size], i);
     }
 }
 
@@ -150,12 +150,12 @@ int log_append_entry(log_t* me_, raft_entry_t* ety)
     if (e != 0)
         return e;
 
-    memcpy(&me->entries[me->back], ety, sizeof(raft_entry_t));
+    me->entries[me->back] = ety;
 
     if (me->cb.log_offer)
     {
         void* ud = raft_get_udata(me->raft);
-        e = me->cb.log_offer(me->raft, ud, &me->entries[me->back], idx);
+        e = me->cb.log_offer(me->raft, ud, me->entries[me->back], idx);
         if (0 != e)
             return e;
     }
@@ -167,7 +167,7 @@ int log_append_entry(log_t* me_, raft_entry_t* ety)
     return 0;
 }
 
-raft_entry_t* log_get_from_idx(log_t* me_, raft_index_t idx, int *n_etys)
+raft_entry_t** log_get_from_idx(log_t* me_, raft_index_t idx, int *n_etys)
 {
     log_private_t* me = (log_private_t*)me_;
     raft_index_t i;
@@ -211,7 +211,7 @@ raft_entry_t* log_get_at_idx(log_t* me_, raft_index_t idx)
     idx -= 1;
 
     i = (me->front + idx - me->base) % me->size;
-    return &me->entries[i];
+    return me->entries[i];
 }
 
 raft_index_t log_count(log_t* me_)
@@ -237,13 +237,13 @@ static int __log_delete(log_t* me_, raft_index_t idx, func_entry_notify_f cb, vo
         if (me->cb.log_pop)
         {
             int e = me->cb.log_pop(me->raft, raft_get_udata(me->raft),
-                                   &me->entries[back], idx_tmp);
+                                   me->entries[back], idx_tmp);
             if (0 != e)
                 return e;
         }
 
         if (cb)
-            cb(cb_arg, &me->entries[back], idx_tmp);
+            cb(cb_arg, me->entries[back], idx_tmp);
 
         me->back = back;
         me->count--;
@@ -264,11 +264,11 @@ int log_poll(log_t * me_, void** etyp)
     if (0 == me->count)
         return -1;
 
-    const void *elem = &me->entries[me->front];
+    const void *elem = me->entries[me->front];
     if (me->cb.log_poll)
     {
         int e = me->cb.log_poll(me->raft, raft_get_udata(me->raft),
-                                 &me->entries[me->front], idx);
+                                 me->entries[me->front], idx);
         if (0 != e)
             return e;
     }
@@ -289,9 +289,9 @@ raft_entry_t *log_peektail(log_t * me_)
         return NULL;
 
     if (0 == me->back)
-        return &me->entries[me->size - 1];
+        return me->entries[me->size - 1];
     else
-        return &me->entries[me->back - 1];
+        return me->entries[me->back - 1];
 }
 
 void log_empty(log_t * me_)
@@ -359,18 +359,22 @@ static void __log_reset(void *log, raft_index_t first_idx, raft_term_t term)
 
 static int __log_append(void *log, raft_entry_t *entry)
 {
+    raft_entry_hold(entry);
     return log_append_entry(log, entry);
 }
 
 static raft_entry_t *__log_get(void *log, raft_index_t idx)
 {
-    return log_get_at_idx(log, idx);
+    raft_entry_t *e = log_get_at_idx(log, idx);
+    if (e)
+        raft_entry_hold(e);
+    return e;
 }
 
 static int __log_get_batch(void *log, raft_index_t idx, int entries_n, raft_entry_t **entries)
 {
     int n, i;
-    raft_entry_t *r = log_get_from_idx(log, idx, &n);
+    raft_entry_t **r = log_get_from_idx(log, idx, &n);
 
     if (!r || n < 1) {
         return 0;
@@ -380,7 +384,8 @@ static int __log_get_batch(void *log, raft_index_t idx, int entries_n, raft_entr
         n = entries_n;
 
     for (i = 0; i < n; i++) {
-        entries[i] = &r[i];
+        entries[i] = r[i];
+        raft_entry_hold(entries[i]);
     }
     return n;
 }

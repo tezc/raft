@@ -94,8 +94,8 @@ int sender_appendentries(raft_server_t* raft,
     msg_entry_t** entries = calloc(1, sizeof(msg_entry_t *) * msg->n_entries);
     int i;
     for (i = 0; i < msg->n_entries; i++) {
-        entries[i] = calloc(1, sizeof(msg_entry_t));
-        memcpy(entries[i], msg->entries[i], sizeof(msg_entry_t));
+        entries[i] = msg->entries[i];
+        raft_entry_hold(entries[i]);
     }
 
     msg_entry_t** old_entries = msg->entries;
