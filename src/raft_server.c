@@ -460,6 +460,8 @@ int raft_recv_appendentries(
                 /* Should never happen; something is seriously wrong! */
                 __log(me_, node, "Snapshot AE prev conflicts with committed entry");
                 e = RAFT_ERR_SHUTDOWN;
+                if (ety)
+                    raft_entry_release(ety);
                 goto out;
             }
         }
@@ -480,14 +482,18 @@ int raft_recv_appendentries(
                 /* Should never happen; something is seriously wrong! */
                 __log(me_, node, "AE prev conflicts with committed entry");
                 e = RAFT_ERR_SHUTDOWN;
+                raft_entry_release(ety);
                 goto out;
             }
             /* Delete all the following log entries because they don't match */
             e = raft_delete_entry_from_idx(me_, ae->prev_log_idx);
             if (e != 0)
                 __log(me_, node, "raft_delete_entry_from_idx failed");
+            raft_entry_release(ety);
             goto out;
         }
+        if (ety)
+            raft_entry_release(ety);
     }
 
     r->success = 1;
@@ -511,17 +517,23 @@ int raft_recv_appendentries(
                       raft_get_current_idx(me_), raft_get_commit_idx(me_),
                       ae->leader_commit, ae->prev_log_idx);
                 e = RAFT_ERR_SHUTDOWN;
+                raft_entry_release(existing_ety);
                 goto out;
             }
+            __log(me_, node, "deleting entry %d (received %d), log term=%lu (received %lu)",
+                    existing_ety->id, ety->id, existing_ety->term, ety->term);
             e = raft_delete_entry_from_idx(me_, ety_index);
             if (0 != e) {
                 __log(me_, node, "raft_delete_entry_from_idx failed");
+                raft_entry_release(existing_ety);
                 goto out;
             }
+            raft_entry_release(existing_ety);
             break;
         }
         else if (!existing_ety)
             break;
+        raft_entry_release(existing_ety);
         r->current_idx = ety_index;
     }
 
@@ -581,9 +593,10 @@ static int __should_grant_vote(raft_server_private_t* me, msg_requestvote_t* vr)
     int ety_term;
 
     // TODO: add test
-    if (ety)
+    if (ety) {
         ety_term = ety->term;
-    else if (!ety && me->snapshot_last_idx == current_idx)
+        raft_entry_release(ety);
+    } else if (!ety && me->snapshot_last_idx == current_idx)
         ety_term = me->snapshot_last_term;
     else
         return 0;
@@ -983,13 +996,14 @@ int raft_send_appendentries(raft_server_t* me_, raft_node_t* node)
         }
     }
 
-    __log(me_, node, "sending appendentries: ci:%d comi:%d t:%d lc:%d pli:%d plt:%d",
+    __log(me_, node, "sending appendentries: ci:%lu comi:%lu t:%lu lc:%lu pli:%lu plt:%lu #%d",
           raft_get_current_idx(me_),
           raft_get_commit_idx(me_),
           ae.term,
           ae.leader_commit,
           ae.prev_log_idx,
-          ae.prev_log_term);
+          ae.prev_log_term,
+          ae.n_entries);
 
     int res = me->cb.send_appendentries(me_, me->udata, node, &ae);
     raft_entry_release_list(ae.entries, ae.n_entries);
@@ -1359,7 +1373,7 @@ int raft_begin_snapshot(raft_server_t *me_, int flags)
     me->snapshot_flags = flags;
 
     __log(me_, NULL,
-        "begin snapshot sli:%d slt:%d slogs:%d\n",
+        "begin snapshot sli:%d slt:%d slogs:%d",
         me->snapshot_last_idx,
         me->snapshot_last_term,
         raft_get_num_snapshottable_logs(me_));
@@ -1400,7 +1414,7 @@ int raft_end_snapshot(raft_server_t *me_)
     me->snapshot_in_progress = 0;
 
     __log(me_, NULL,
-        "end snapshot base:%d commit-index:%d current-index:%d\n",
+        "end snapshot base:%d commit-index:%d current-index:%d",
         me->log_impl->first_idx(me->log) - 1,
         raft_get_commit_idx(me_),
         raft_get_current_idx(me_));
@@ -1483,7 +1497,7 @@ int raft_begin_load_snapshot(
     me->num_nodes = 1;
 
     __log(me_, NULL,
-        "loaded snapshot sli:%d slt:%d slogs:%d\n",
+        "loaded snapshot sli:%d slt:%d slogs:%d",
         me->snapshot_last_idx,
         me->snapshot_last_term,
         raft_get_num_snapshottable_logs(me_));
