@@ -319,9 +319,6 @@ int raft_recv_appendentries_response(raft_server_t* me_,
         raft_index_t next_idx = raft_node_get_next_idx(node);
         assert(0 < next_idx);
         /* Stale response -- ignore */
-        __log(me_, node,
-                "appendentries failure: next_idx=%lu current_idx=%lu match_idx=%lu log-current-idx=%lu\n",
-                next_idx, r->current_idx, match_idx, raft_get_current_idx(me_));
         if (r->current_idx < match_idx)
             return 0;
         if (r->current_idx < next_idx - 1)
@@ -384,13 +381,6 @@ int raft_recv_appendentries_response(raft_server_t* me_,
     }
 
     /* Aggressively send remaining entries */
-    raft_entry_t *ety = raft_get_entry_from_idx(me_, raft_node_get_next_idx(node));
-    __log(me_, node, "---> next_idx=%lu ety=%lu current_idx=%lu",
-            raft_node_get_next_idx(node),
-            ety ? ety->id : 0,
-            raft_get_current_idx(me_));
-    if (ety) raft_entry_release(ety);
-
     if (raft_node_get_next_idx(node) <= raft_get_current_idx(me_))
         raft_send_appendentries(me_, node);
 
@@ -427,10 +417,8 @@ int raft_recv_appendentries(
     else if (me->current_term < ae->term)
     {
         e = raft_set_current_term(me_, ae->term);
-        if (0 != e) {
-            __log(me_, node, "raft_set_current_term() failed: %d", e);
+        if (0 != e)
             goto out;
-        }
         raft_become_follower(me_);
     }
     else if (ae->term < me->current_term)
@@ -487,8 +475,6 @@ int raft_recv_appendentries(
             }
             /* Delete all the following log entries because they don't match */
             e = raft_delete_entry_from_idx(me_, ae->prev_log_idx);
-            if (e != 0)
-                __log(me_, node, "raft_delete_entry_from_idx failed");
             raft_entry_release(ety);
             goto out;
         }
@@ -520,11 +506,8 @@ int raft_recv_appendentries(
                 raft_entry_release(existing_ety);
                 goto out;
             }
-            __log(me_, node, "deleting entry %d (received %d), log term=%lu (received %lu)",
-                    existing_ety->id, ety->id, existing_ety->term, ety->term);
             e = raft_delete_entry_from_idx(me_, ety_index);
             if (0 != e) {
-                __log(me_, node, "raft_delete_entry_from_idx failed");
                 raft_entry_release(existing_ety);
                 goto out;
             }
@@ -541,10 +524,8 @@ int raft_recv_appendentries(
     for (; i < ae->n_entries; i++)
     {
         e = raft_append_entry(me_, ae->entries[i]);
-        if (0 != e) {
-            __log(me_, node, "raft_append_entry failed");
+        if (0 != e)
             goto out;
-        }
         r->current_idx = ae->prev_log_idx + 1 + i;
     }
 
@@ -1261,6 +1242,9 @@ void raft_handle_remove_cfg_change(raft_server_t* me_, raft_entry_t* ety, const 
     if (!raft_entry_is_cfg_change(ety))
         return;
 
+    if (!me->cb.log_get_node_id)
+        return;
+
     raft_node_id_t node_id = me->cb.log_get_node_id(me_, raft_get_udata(me_), ety, idx);
 
     switch (ety->type)
@@ -1403,7 +1387,7 @@ int raft_end_snapshot(raft_server_t *me_)
     if (!me->snapshot_in_progress || me->snapshot_last_idx == 0)
         return -1;
 
-    // Why???
+    // TODO: What is the purpose of this assert? Looks wrong.
     // assert(raft_get_num_snapshottable_logs(me_) != 0);
 
     /* If needed, remove compacted logs */
