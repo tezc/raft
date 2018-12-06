@@ -33,6 +33,7 @@ ffi.set_source(
         src/raft_node.c
         """.split(),
     include_dirs=["include"],
+    extra_compile_args=["-UNDEBUG"]
     )
 library = ffi.compile()
 
