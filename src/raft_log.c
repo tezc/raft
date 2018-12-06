@@ -359,16 +359,12 @@ static void __log_reset(void *log, raft_index_t first_idx, raft_term_t term)
 
 static int __log_append(void *log, raft_entry_t *entry)
 {
-    raft_entry_hold(entry);
     return log_append_entry(log, entry);
 }
 
 static raft_entry_t *__log_get(void *log, raft_index_t idx)
 {
-    raft_entry_t *e = log_get_at_idx(log, idx);
-    if (e)
-        raft_entry_hold(e);
-    return e;
+    return log_get_at_idx(log, idx);
 }
 
 static int __log_get_batch(void *log, raft_index_t idx, int entries_n, raft_entry_t **entries)
@@ -385,7 +381,6 @@ static int __log_get_batch(void *log, raft_index_t idx, int entries_n, raft_entr
 
     for (i = 0; i < n; i++) {
         entries[i] = r[i];
-        raft_entry_hold(entries[i]);
     }
     return n;
 }

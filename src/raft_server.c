@@ -376,8 +376,6 @@ int raft_recv_appendentries_response(raft_server_t* me_,
             if (raft_get_num_voting_nodes(me_) / 2 < votes)
                 raft_set_commit_idx(me_, point);
         }
-        if (ety)
-            raft_entry_release(ety);
     }
 
     /* Aggressively send remaining entries */
@@ -448,8 +446,6 @@ int raft_recv_appendentries(
                 /* Should never happen; something is seriously wrong! */
                 __log(me_, node, "Snapshot AE prev conflicts with committed entry");
                 e = RAFT_ERR_SHUTDOWN;
-                if (ety)
-                    raft_entry_release(ety);
                 goto out;
             }
         }
@@ -470,16 +466,12 @@ int raft_recv_appendentries(
                 /* Should never happen; something is seriously wrong! */
                 __log(me_, node, "AE prev conflicts with committed entry");
                 e = RAFT_ERR_SHUTDOWN;
-                raft_entry_release(ety);
                 goto out;
             }
             /* Delete all the following log entries because they don't match */
             e = raft_delete_entry_from_idx(me_, ae->prev_log_idx);
-            raft_entry_release(ety);
             goto out;
         }
-        if (ety)
-            raft_entry_release(ety);
     }
 
     r->success = 1;
@@ -503,20 +495,15 @@ int raft_recv_appendentries(
                       raft_get_current_idx(me_), raft_get_commit_idx(me_),
                       ae->leader_commit, ae->prev_log_idx);
                 e = RAFT_ERR_SHUTDOWN;
-                raft_entry_release(existing_ety);
                 goto out;
             }
             e = raft_delete_entry_from_idx(me_, ety_index);
-            if (0 != e) {
-                raft_entry_release(existing_ety);
+            if (0 != e)
                 goto out;
-            }
-            raft_entry_release(existing_ety);
             break;
         }
         else if (!existing_ety)
             break;
-        raft_entry_release(existing_ety);
         r->current_idx = ety_index;
     }
 
@@ -574,10 +561,9 @@ static int __should_grant_vote(raft_server_private_t* me, msg_requestvote_t* vr)
     int ety_term;
 
     // TODO: add test
-    if (ety) {
+    if (ety)
         ety_term = ety->term;
-        raft_entry_release(ety);
-    } else if (!ety && me->snapshot_last_idx == current_idx)
+    else if (!ety && me->snapshot_last_idx == current_idx)
         ety_term = me->snapshot_last_term;
     else
         return 0;
@@ -859,10 +845,8 @@ int raft_apply_entry(raft_server_t* me_)
     if (me->cb.applylog)
     {
         int e = me->cb.applylog(me_, me->udata, ety, me->last_applied_idx);
-        if (RAFT_ERR_SHUTDOWN == e) {
-            raft_entry_release(ety);
+        if (RAFT_ERR_SHUTDOWN == e)
             return RAFT_ERR_SHUTDOWN;
-        }
     }
 
     /* voting cfg change is now complete.
@@ -903,7 +887,6 @@ int raft_apply_entry(raft_server_t* me_)
     }
 
 exit:
-    raft_entry_release(ety);
 
     return 0;
 }
@@ -973,7 +956,6 @@ int raft_send_appendentries(raft_server_t* me_, raft_node_t* node)
         {
             ae.prev_log_idx = next_idx - 1;
             ae.prev_log_term = prev_ety->term;
-            raft_entry_release(prev_ety);
         }
     }
 
@@ -987,7 +969,6 @@ int raft_send_appendentries(raft_server_t* me_, raft_node_t* node)
           ae.n_entries);
 
     int res = me->cb.send_appendentries(me_, me->udata, node, &ae);
-    raft_entry_release_list(ae.entries, ae.n_entries);
     __raft_free(ae.entries);
 
     return res;
