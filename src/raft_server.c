@@ -1299,64 +1299,6 @@ exit:
     return 0;
 }
 
-static raft_entry_t **raft_get_entries(raft_server_t *me,
-                                       raft_node_t *node,
-                                       raft_index_t idx,
-                                       raft_index_t *n_etys)
-{
-
-    const int max_entries_in_append_req = 64 * 1024;
-    raft_index_t n;
-
-    /* If callback is not implemented, fetch entries from log implementation. */
-    if (!me->cb.get_entries_to_send) {
-        return raft_get_entries_from_idx(me, idx, n_etys);
-    }
-
-    *n_etys = 0;
-
-    if (raft_get_current_idx(me) < idx) {
-        return NULL;
-    }
-
-    raft_index_t size = raft_get_current_idx(me) - idx + 1;
-    if (size > max_entries_in_append_req) {
-        size = max_entries_in_append_req;
-    }
-
-    raft_entry_t **e = raft_malloc(size * sizeof(*e));
-
-    n = me->cb.get_entries_to_send(me, me->udata, node, idx, size, e);
-    if (n < 0) {
-        n = 0;
-    }
-
-    *n_etys = n;
-    return e;
-}
-
-raft_entry_t **raft_get_entries_from_idx(raft_server_t *me,
-                                         raft_index_t idx,
-                                         raft_index_t *n_etys)
-{
-    *n_etys = 0;
-
-    if (raft_get_current_idx(me) < idx) {
-        return NULL;
-    }
-
-    raft_index_t size = raft_get_current_idx(me) - idx + 1;
-    raft_entry_t **e = raft_malloc(size * sizeof(raft_entry_t*));
-
-    raft_index_t n = me->log_impl->get_batch(me->log, idx, size, e);
-    if (n < 1) {
-        return NULL;
-    }
-
-    *n_etys = n;
-    return e;
-}
-
 int raft_send_snapshot(raft_server_t *me, raft_node_t *node)
 {
     if (!me->cb.send_snapshot) {
@@ -1577,13 +1519,34 @@ int raft_send_appendentries(raft_server_t *me, raft_node_t *node)
     }
 
     do {
-        if (me->cb.backpressure) {
-            if (me->cb.backpressure(me, me->udata, node) != 0) {
-                return 0;
-            }
-        }
+        const int max_entries_in_append_req = 64 * 1024;
 
         raft_index_t next_idx = raft_node_get_next_idx(node);
+        raft_index_t size = raft_get_current_idx(me) - next_idx  + 1;
+
+        if (size > max_entries_in_append_req) {
+            size = max_entries_in_append_req;
+        }
+
+        raft_index_t n_entries = 0;
+        raft_entry_t **entries = NULL;
+
+        if (size != 0) {
+            entries = raft_malloc(size * sizeof(*entries));
+        }
+
+        if (me->cb.get_entries_to_send) {
+            n_entries = me->cb.get_entries_to_send(me, me->udata, node,
+                                                   next_idx, size, entries);
+        } else {
+            n_entries = me->log_impl->get_batch(me->log, next_idx, size,
+                                                entries);
+        }
+
+        if (n_entries < 0 && entries) {
+            raft_free(entries);
+            return 0;
+        }
 
         raft_appendentries_req_t req = {
             .term = me->current_term,
@@ -1592,7 +1555,8 @@ int raft_send_appendentries(raft_server_t *me, raft_node_t *node)
             .msg_id = ++me->msg_id,
             .prev_log_idx = next_idx - 1,
             .prev_log_term = raft_get_previous_log_term(me, next_idx),
-            .entries = raft_get_entries(me, node, next_idx, &req.n_entries)
+            .entries = entries,
+            .n_entries = n_entries
         };
 
         raft_log(me, "%d --> %d, sent appendentries_req "

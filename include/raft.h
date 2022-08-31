@@ -580,38 +580,6 @@ typedef int (
     raft_node_t* node
     );
 
-/** Callback to skip sending raft_appendentries_req to the node
- *
- * Implementing this callback is optional
- *
- * If there are already pending appendentries messages in flight, you may want
- * to skip sending more until you receive response for the previous ones.
- * If the node is a slow consumer and you create raft_appendentries_req for each
- * batch of new entries received, it may cause out of memory.
- *
- * Also, this way you can do batching. If new entries are received with an
- * interval, creating a new appendentries message for each one might be
- * inefficient. For each appendentries message, follower has to write entries
- * to the disk before sending the response. e.g If there are 1000 appendentries
- * message in flight, to commit a new entry, previous 1000 disk write operations
- * must be completed. Considering disk write operations are quite slow, 1000
- * write operations will take quite a time. A better approach would be limiting
- * in flight appendentries messages depending on network conditions and disk
- * performance.
- *
- * @param[in] raft The Raft server making this callback
- * @param[in] node The node that we are about to send raft_appendentries_req to
- * @return 0 to send message
- *         Any other value to skip sending message
- */
-typedef int (
-*raft_backpressure_f
-)   (
-    raft_server_t* raft,
-    void *user_data,
-    raft_node_t* node
-    );
-
 /** Callback for fetching entries to send in a appendentries message.
  *
  *  This callback is useful when you want to limit appendentries message size.
@@ -622,6 +590,10 @@ typedef int (
  *  will be fetched and sent as another append entries message in the next
  *  callback.
  *
+ *  Even if this function returns zero, an empty appendentries message will be
+ *  sent. If application wants to apply some backpressure (because there are
+ *  other appendentries messages in flight), it should return a negative value.
+ *
  * @param[in] raft The Raft server making this callback.
  * @param[in] user_data User data that is passed from Raft server.
  * @param[in] node The node that we are sending this message to.
@@ -629,6 +601,8 @@ typedef int (
  * @param[in] entries_n Length of entries (max. entries to fetch).
  * @param[out] entries An initialized array of raft_entry_t*.
  * @return Number of entries fetched
+ *         Negative return value if you want to prevent sending appendentries
+ *         message. (backpressure).
  */
 typedef raft_index_t (
 *raft_get_entries_to_send_f
@@ -712,9 +686,6 @@ typedef struct
 
     /** Callback for sending TimeoutNow RPC messages to nodes */
     raft_send_timeoutnow_f send_timeoutnow;
-
-    /** Callback for deciding whether to send raft_appendentries_req to a node. */
-    raft_backpressure_f backpressure;
 
     /** Callback for preparing entries to send in a raft_appendentries_req */
     raft_get_entries_to_send_f get_entries_to_send;
@@ -1161,14 +1132,6 @@ void raft_node_set_next_idx(raft_node_t *node, raft_index_t idx);
  * @param[in] idx The entry's index
  * @return entry from index */
 raft_entry_t* raft_get_entry_from_idx(raft_server_t* me, raft_index_t idx);
-
-/**
- * @param[in] idx The entry's index
- * @param[out] n_etys Number of returned entries
- * @return entry batch from index. Caller must use raft_entry_release_list(). */
-raft_entry_t** raft_get_entries_from_idx(raft_server_t* me,
-                                         raft_index_t idx,
-                                         raft_index_t* n_etys);
 
 /**
  * @param[in] node The node's ID

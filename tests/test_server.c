@@ -3354,9 +3354,14 @@ void TestRaft_leader_recv_entry_fails_if_prevlogidx_less_than_commit(CuTest * tc
     CuAssertIntEquals(tc, 0, aer.success);
 }
 
-int backpressure(raft_server_t* raft, void* udata, raft_node_t* node)
+static raft_index_t cb_get_entries_to_send_backpressure(raft_server_t *raft,
+                                                        void *user_data,
+                                                        raft_node_t *node,
+                                                        raft_index_t idx,
+                                                        raft_index_t entries_n,
+                                                        raft_entry_t **entries)
 {
-    return 1;
+    return -1;
 }
 
 void TestRaft_leader_recv_entry_does_not_send_new_appendentries_to_slow_nodes(CuTest * tc)
@@ -3368,7 +3373,7 @@ void TestRaft_leader_recv_entry_does_not_send_new_appendentries_to_slow_nodes(Cu
     raft_cbs_t funcs = {
         .persist_metadata = __raft_persist_metadata,
         .send_appendentries          = sender_appendentries,
-        .backpressure = backpressure
+        .get_entries_to_send = cb_get_entries_to_send_backpressure,
     };
 
     void *sender = sender_new(NULL);
